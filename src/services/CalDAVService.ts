@@ -578,18 +578,10 @@ export class CalDAVService {
 			exportFormat: options.exportFormat,
 		});
 
-		const componentType = isVtodo ? "VTODO" : "VEVENT";
-		const componentMatch = icsContent.match(new RegExp(`BEGIN:${componentType}[\\s\\S]*?END:${componentType}`));
-		if (!componentMatch) {
-			throw new Error(`Failed to generate ${componentType}`);
-		}
-
-		// Unfold ICS lines first (RFC 5545 line folding - lines > 75 chars wrap with space)
-		// This ensures our UID replacement works correctly on folded UIDs
-		const unfoldedComponent = componentMatch[0].replace(/\r\n[ \t]/g, "");
-
-		// Replace the UID in the component with our stable UUID
-		const componentContent = unfoldedComponent.replace(/^UID:.*$/m, `UID:${eventId}`);
+		// Unfold any folded lines so the UID replacement regex works correctly,
+		// then replace the generated UID with our stable UUID.
+		const unfoldedContent = icsContent.replace(/\r\n[ \t]/g, "");
+		const calendarContent = unfoldedContent.replace(/^UID:.*$/m, `UID:${eventId}`);
 
 		const calendarUrl = `${baseUrl}${eventId}.ics`;
 
@@ -600,7 +592,7 @@ export class CalDAVService {
 				Authorization: authHeader,
 				"Content-Type": "text/calendar; charset=utf-8",
 			},
-			body: this.wrapInICSCalendar(componentContent),
+			body: calendarContent,
 			throw: false,
 		});
 
@@ -617,12 +609,4 @@ export class CalDAVService {
 		return `tasknotes-${pathHash}`;
 	}
 
-	private wrapInICSCalendar(component: string): string {
-		return `BEGIN:VCALENDAR
-VERSION:2.0
-PRODID:-//TaskNotes//EN
-CALSCALE:GREGORIAN
-${component}
-END:VCALENDAR`;
-	}
 }
