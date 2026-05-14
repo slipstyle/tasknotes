@@ -229,14 +229,13 @@ export class CalendarExportService {
 			lines.push(`DESCRIPTION:${this.escapeICSText(description)}`);
 		}
 
-		// Add location from contexts
-		if (task.contexts && task.contexts.length > 0) {
-			lines.push(`LOCATION:${this.escapeICSText(task.contexts.join(", "))}`);
-		}
-
-		// Add categories from tags
-		if (task.tags && task.tags.length > 0) {
-			lines.push(`CATEGORIES:${task.tags.map((t) => this.escapeICSText(t)).join(",")}`);
+		// Add categories from tags and contexts (contexts prefixed with @)
+		const categories = [
+			...(task.tags ?? []).map((t) => this.escapeICSText(t)),
+			...(task.contexts ?? []).map((c) => this.escapeICSText(`@${c}`)),
+		];
+		if (categories.length > 0) {
+			lines.push(`CATEGORIES:${categories.join(",")}`);
 		}
 
 		// Map priority (ICS uses 1-9, with 1 being highest)
@@ -754,14 +753,13 @@ export class CalendarExportService {
 				lines.push(`DESCRIPTION:${this.escapeICSText(description)}`);
 			}
 
-			// Add location from contexts
-			if (task.contexts && task.contexts.length > 0) {
-				lines.push(`LOCATION:${this.escapeICSText(task.contexts.join(", "))}`);
-			}
-
-			// Add categories from tags
-			if (task.tags && task.tags.length > 0) {
-				lines.push(`CATEGORIES:${task.tags.map((t) => this.escapeICSText(t)).join(",")}`);
+			// Add categories from tags and contexts (contexts prefixed with @)
+			const categories = [
+				...(task.tags ?? []).map((t) => this.escapeICSText(t)),
+				...(task.contexts ?? []).map((c) => this.escapeICSText(`@${c}`)),
+			];
+			if (categories.length > 0) {
+				lines.push(`CATEGORIES:${categories.join(",")}`);
 			}
 
 			// Map priority (ICS uses 1-9, with 1 being highest)
@@ -1044,9 +1042,13 @@ export class CalendarExportService {
 			lines.push(`PRIORITY:${priorityMap[task.priority] || "0"}`);
 		}
 
-		// CATEGORIES from tags
-		if (task.tags && task.tags.length > 0) {
-			lines.push(`CATEGORIES:${task.tags.map((t) => this.escapeICSText(t)).join(",")}`);
+		// CATEGORIES from tags and contexts (contexts prefixed with @)
+		const vtodoCategories = [
+			...(task.tags ?? []).map((t) => this.escapeICSText(t)),
+			...(task.contexts ?? []).map((c) => this.escapeICSText(`@${c}`)),
+		];
+		if (vtodoCategories.length > 0) {
+			lines.push(`CATEGORIES:${vtodoCategories.join(",")}`);
 		}
 
 		// ESTIMATED-DURATION from timeEstimate
