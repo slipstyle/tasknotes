@@ -262,6 +262,16 @@ export function renderTaskPropertiesTab(
 		translate("settings.taskProperties.properties.icsEventId.name"),
 		translate("settings.taskProperties.properties.icsEventId.description"));
 
+	// CalDAV Event ID Property Card
+	renderMetadataPropertyCard(container, plugin, save, translate, "caldavEventId",
+		translate("settings.taskProperties.properties.caldavEventId.name"),
+		translate("settings.taskProperties.properties.caldavEventId.description"));
+
+	// CalDAV Event URL Property Card
+	renderMetadataPropertyCard(container, plugin, save, translate, "caldavEventUrl",
+		translate("settings.taskProperties.properties.caldavEventUrl.name"),
+		translate("settings.taskProperties.properties.caldavEventUrl.description"));
+
 	// ICS Event Tag Property Card
 	renderMetadataPropertyCard(container, plugin, save, translate, "icsEventTag",
 		translate("settings.taskProperties.properties.icsEventTag.name"),

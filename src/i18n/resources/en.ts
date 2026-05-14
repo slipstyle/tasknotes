@@ -1135,6 +1135,16 @@ export const en: TranslationTree = {
 					description:
 						"Unique identifier linking a note to an ICS calendar event. Added automatically when creating notes from calendar events.",
 				},
+				caldavEventId: {
+					name: "CalDAV event ID",
+					description:
+						"UUID used to identify this task's event on the CalDAV server. Change this if another plugin uses the same field name to avoid sync conflicts.",
+				},
+				caldavEventUrl: {
+					name: "CalDAV event URL",
+					description:
+						"Full URL of this task's .ics resource on the CalDAV server. Change this if another plugin uses the same field name to avoid sync conflicts.",
+				},
 				icsEventTag: {
 					name: "ICS event tag",
 					description:
@@ -1297,6 +1307,8 @@ export const en: TranslationTree = {
 					pomodoros: "Pomodoros",
 					icsEventId: "ICS event ID",
 					icsEventTag: "ICS event tag",
+					caldavEventId: "CalDAV event ID",
+					caldavEventUrl: "CalDAV event URL",
 					reminders: "Reminders",
 				},
 			},
