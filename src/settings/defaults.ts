@@ -7,6 +7,7 @@ import {
 	ProjectAutosuggestSettings,
 	NLPTriggersConfig,
 	GoogleCalendarExportSettings,
+	CalDAVExportSettings,
 } from "../types/settings";
 import { DEFAULT_FIELD_MAPPING } from "../core/defaultFieldMapping";
 export { DEFAULT_FIELD_MAPPING } from "../core/defaultFieldMapping";
@@ -206,6 +207,21 @@ export const DEFAULT_GOOGLE_CALENDAR_EXPORT: GoogleCalendarExportSettings = {
 	defaultEventDuration: 60, // 1 hour if timed events
 	includeObsidianLink: true, // Include link back to Obsidian
 	defaultReminderMinutes: null, // No reminder override by default (user opts in)
+};
+
+export const DEFAULT_CALDAV_EXPORT_SETTINGS: CalDAVExportSettings = {
+	enabled: false,
+	url: "",
+	calendarName: "TaskNotes",
+	includeReminders: true,
+	includeRecurrence: true,
+	concurrentExports: 5,
+	enableBasesViewFilter: false,
+	caldavExportBaseViewPath: "",
+	enableAutoExport: false,
+	autoExportInterval: 60,
+	acknowledgedWipeRisk: false,
+	enableDebugLogging: false,
 };
 
 export const DEFAULT_PROJECT_AUTOSUGGEST: ProjectAutosuggestSettings = {
@@ -414,6 +430,8 @@ export const DEFAULT_SETTINGS: TaskNotesSettings = {
 	microsoftCalendarSyncTokens: {},
 	// Google Calendar task export settings
 	googleCalendarExport: DEFAULT_GOOGLE_CALENDAR_EXPORT,
+	// CalDAV export settings
+	caldavExport: DEFAULT_CALDAV_EXPORT_SETTINGS,
 	// Debug logging
 	enableDebugLogging: false,
 };

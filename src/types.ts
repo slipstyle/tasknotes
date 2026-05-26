@@ -477,6 +477,9 @@ export interface TaskInfo {
 	googleCalendarExceptionEventId?: string; // Detached Google Calendar event ID for a moved recurring occurrence
 	googleCalendarExceptionOriginalScheduled?: string; // Original recurring date replaced by the current moved occurrence
 	googleCalendarMovedOriginalDates?: string[]; // Original recurring dates excluded after moved occurrences are resolved
+	caldavEventId?: string; // CalDAV event UUID for sync
+	caldavEventUrl?: string; // CalDAV event URL for sync
+	caldavLastSynced?: string; // Last sync timestamp (ISO)
 	reminders?: Reminder[]; // Task reminders
 	customProperties?: Record<string, unknown>; // Custom properties from Bases or other sources
 	basesData?: unknown; // Raw Bases data for formula computation (internal use)
@@ -702,6 +705,9 @@ export interface FieldMapping {
 	googleCalendarExceptionEventId: string; // Detached Google Calendar event ID for moved recurring occurrences
 	googleCalendarExceptionOriginalScheduled: string; // Original recurring date replaced by the current moved occurrence
 	googleCalendarMovedOriginalDates: string; // Historical moved recurring dates excluded from the master event
+	caldavEventId: string; // For CalDAV sync (stores event UUID)
+	caldavEventUrl: string; // For CalDAV sync (stores event URL in calendar)
+	caldavLastSynced: string; // Last sync timestamp for CalDAV
 	reminders: string; // For task reminders
 	sortOrder: string; // Numeric ordering within column (lower = higher)
 }

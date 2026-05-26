@@ -252,6 +252,8 @@ export interface TaskNotesSettings {
 	microsoftCalendarSyncTokens: Record<string, string>; // Maps calendar ID to delta link
 	// Google Calendar task export settings
 	googleCalendarExport: GoogleCalendarExportSettings;
+	// CalDAV export settings
+	caldavExport: CalDAVExportSettings;
 	// Debug logging
 	enableDebugLogging: boolean;
 }
@@ -339,6 +341,28 @@ export interface GoogleCalendarExportSettings {
 	defaultEventDuration: number; // Duration in minutes if timed (uses timeEstimate if available)
 	includeObsidianLink: boolean; // Include obsidian:// link in event description
 	defaultReminderMinutes: number | number[] | null; // Popup reminder(s) X minutes before event (null = no reminder)
+}
+
+/**
+ * Configuration for exporting tasks to CalDAV server
+ */
+export interface CalDAVExportSettings {
+	enabled: boolean; // Master enable/disable
+	url: string; // Full CalDAV URL
+	calendarName: string; // Target calendar display name
+	includeReminders: boolean; // Include VALARMs (default: true)
+	includeRecurrence: boolean; // Export recurring tasks as series (default: true)
+	concurrentExports: number; // Number of concurrent export tasks (default: 5)
+	// Bases view filtering
+	enableBasesViewFilter: boolean; // Whether to filter tasks using a Bases view
+	caldavExportBaseViewPath?: string; // Path to Bases view file for filtering (format: path/to/file.base#ViewName)
+	// Auto-export (separate from ICS)
+	enableAutoExport: boolean; // Enable auto-export for CalDAV
+	autoExportInterval: number; // Auto-export interval in minutes
+	// Safety
+	acknowledgedWipeRisk: boolean; // Must be true to enable export
+	// Debug
+	enableDebugLogging: boolean; // Show verbose debug logs (default: false)
 }
 
 export type TimeblockAttachmentSearchOrder =
