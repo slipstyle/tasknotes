@@ -1692,7 +1692,7 @@ export function renderIntegrationsTab(
 							onClick: async () => {
 								if (plugin.autoExportService) {
 									try {
-										await plugin.autoExportService.exportNow();
+										await plugin.autoExportService.exportICSNow();
 										new Notice(
 											translate(
 												"settings.integrations.autoExport.notices.exportSuccess"
@@ -1754,6 +1754,377 @@ export function renderIntegrationsTab(
 			}
 		}
 	);
+
+
+	// CalDAV Export Section
+	createSettingGroup(
+		container,
+		{
+			heading: translate("settings.integrations.caldavExport.header"),
+			description: translate("settings.integrations.caldavExport.description"),
+		},
+		async (group) => {
+			const { CalDAVService } = await import("../../services/CalDAVService");
+			const caldavService = new CalDAVService(plugin);
+
+			const savedCredentials = await caldavService.loadCredentials();
+			const initialUrl = savedCredentials?.url || "";
+			const initialUsername = savedCredentials?.username || "";
+			const initialPassword = savedCredentials?.password || "";
+
+			let caldavUrl = initialUrl;
+			let caldavUsername = initialUsername;
+			let caldavPassword = initialPassword;
+
+			// Enable toggle - at the TOP of the CalDAV section
+			group.addSetting((setting) =>
+				configureToggleSetting(setting, {
+					name: translate("settings.integrations.caldavExport.enable.name"),
+					desc: translate("settings.integrations.caldavExport.enable.description"),
+					getValue: () =>
+						(plugin.settings.caldavExport.enabled ?? false) &&
+						(plugin.settings.caldavExport.acknowledgedWipeRisk ?? false),
+					setValue: async (value: boolean) => {
+						if (value && !plugin.settings.caldavExport.acknowledgedWipeRisk) {
+							new Notice(
+								translate(
+									"settings.integrations.caldavExport.notices.notAcknowledged"
+								)
+							);
+							return;
+						}
+						plugin.settings.caldavExport.enabled = value;
+						save();
+						if (plugin.autoExportService) {
+							if (value && plugin.settings.caldavExport.autoExportInterval > 0) {
+								plugin.autoExportService.startCalDAVExport();
+							} else {
+								plugin.autoExportService.stopCalDAVExport();
+							}
+						}
+					},
+				})
+			);
+
+			group.addSetting((setting) =>
+				configureTextSetting(setting, {
+					name: translate("settings.integrations.caldavExport.url.name"),
+					desc: translate("settings.integrations.caldavExport.url.description"),
+					placeholder: translate("settings.integrations.caldavExport.url.placeholder"),
+					getValue: () => caldavUrl,
+					setValue: async (value: string) => {
+						caldavUrl = value;
+						await caldavService.saveCredentials(
+							caldavUrl,
+							caldavUsername,
+							caldavPassword
+						);
+					},
+				})
+			);
+
+			group.addSetting((setting) => {
+				configureTextSetting(setting, {
+					name: translate("settings.integrations.caldavExport.username.name"),
+					desc: translate("settings.integrations.caldavExport.username.description"),
+					placeholder: translate(
+						"settings.integrations.caldavExport.username.placeholder"
+					),
+					getValue: () => caldavUsername,
+					setValue: async (value: string) => {
+						caldavUsername = value;
+						await caldavService.saveCredentials(
+							caldavUrl,
+							caldavUsername,
+							caldavPassword
+						);
+					},
+				});
+			});
+
+			group.addSetting((setting) => {
+				configureTextSetting(setting, {
+					name: translate("settings.integrations.caldavExport.password.name"),
+					desc: translate("settings.integrations.caldavExport.password.description"),
+					placeholder: translate(
+						"settings.integrations.caldavExport.password.placeholder"
+					),
+					getValue: () => (caldavPassword ? "••••••••" : ""),
+					setValue: async (value: string) => {
+						caldavPassword = value;
+						await caldavService.saveCredentials(
+							caldavUrl,
+							caldavUsername,
+							caldavPassword
+						);
+					},
+				});
+				const inputEl = setting.controlEl.querySelector("input");
+				if (inputEl) {
+					inputEl.setAttribute("type", "password");
+				}
+			});
+
+			group.addSetting((setting) =>
+				configureTextSetting(setting, {
+					name: translate("settings.integrations.caldavExport.calendarName.name"),
+					desc: translate("settings.integrations.caldavExport.calendarName.description"),
+					placeholder: translate(
+						"settings.integrations.caldavExport.calendarName.placeholder"
+					),
+					getValue: () => plugin.settings.caldavExport.calendarName || "TaskNotes",
+					setValue: async (value: string) => {
+						plugin.settings.caldavExport.calendarName = value;
+						save();
+					},
+				})
+			);
+
+			// Wipe risk warning - use setting description instead
+			group.addSetting((setting) => {
+				setting.setName("");
+				setting.setDesc(
+					translate("settings.integrations.caldavExport.wipeRiskWarning.text")
+				);
+			});
+
+			group.addSetting((setting) =>
+				configureToggleSetting(setting, {
+					name: translate("settings.integrations.caldavExport.wipeRiskWarning.checkbox"),
+					desc: translate("settings.integrations.caldavExport.wipeRiskWarning.checkbox"),
+					getValue: () => plugin.settings.caldavExport.acknowledgedWipeRisk ?? false,
+					setValue: async (value: boolean) => {
+						plugin.settings.caldavExport.acknowledgedWipeRisk = value;
+						if (!value) {
+							plugin.settings.caldavExport.enabled = false;
+						}
+						save();
+					},
+				})
+			);
+
+			group.addSetting((setting) => {
+				setting.setName(
+					translate("settings.integrations.caldavExport.testConnection.name")
+				);
+				setting.setDesc("");
+
+				const button = setting.addButton((button) => {
+					button.setButtonText(
+						translate("settings.integrations.caldavExport.testConnection.buttonText")
+					);
+					button.onClick(async () => {
+						if (!caldavUrl || !caldavUsername || !caldavPassword) {
+							new Notice(
+								translate(
+									"settings.integrations.caldavExport.notices.notConfigured"
+								)
+							);
+							return;
+						}
+
+						const { CalDAVService } = await import("../../services/CalDAVService");
+						const caldavService = new CalDAVService(plugin);
+						const result = await caldavService.testConnection(
+							caldavUrl,
+							caldavUsername,
+							caldavPassword
+						);
+
+						if (result.success) {
+							new Notice(
+								translate(
+									"settings.integrations.caldavExport.notices.connectionSuccess"
+								)
+							);
+							await caldavService.saveCredentials(
+								caldavUrl,
+								caldavUsername,
+								caldavPassword
+							);
+						} else {
+							new Notice(
+								translate(
+									"settings.integrations.caldavExport.notices.connectionFailed",
+									{
+										error: result.error || "Unknown error",
+									}
+								)
+							);
+						}
+					});
+				});
+				return setting;
+			});
+
+			// Include reminders toggle
+			group.addSetting((setting) =>
+				configureToggleSetting(setting, {
+					name: translate("settings.integrations.caldavExport.includeReminders.name"),
+					desc: translate(
+						"settings.integrations.caldavExport.includeReminders.description"
+					),
+					getValue: () => plugin.settings.caldavExport.includeReminders ?? true,
+					setValue: async (value: boolean) => {
+						plugin.settings.caldavExport.includeReminders = value;
+						save();
+					},
+				})
+			);
+
+			group.addSetting((setting) =>
+				configureToggleSetting(setting, {
+					name: translate("settings.integrations.caldavExport.includeRecurrence.name"),
+					desc: translate(
+						"settings.integrations.caldavExport.includeRecurrence.description"
+					),
+					getValue: () => plugin.settings.caldavExport.includeRecurrence ?? true,
+					setValue: async (value: boolean) => {
+						plugin.settings.caldavExport.includeRecurrence = value;
+						save();
+					},
+				})
+			);
+
+			group.addSetting((setting) =>
+				configureNumberSetting(setting, {
+					name: translate("settings.integrations.caldavExport.concurrentExports.name"),
+					desc: translate(
+						"settings.integrations.caldavExport.concurrentExports.description"
+					),
+					placeholder: "5",
+					min: 1,
+					max: 100,
+					getValue: () => plugin.settings.caldavExport.concurrentExports ?? 5,
+					setValue: async (value: number) => {
+						plugin.settings.caldavExport.concurrentExports = value;
+						save();
+					},
+				})
+			);
+
+			group.addSetting((setting) =>
+				configureToggleSetting(setting, {
+					name: translate(
+						"settings.integrations.caldavExport.enableBasesViewFilter.name"
+					),
+					desc: translate(
+						"settings.integrations.caldavExport.enableBasesViewFilter.description"
+					),
+					getValue: () => plugin.settings.caldavExport.enableBasesViewFilter ?? false,
+					setValue: async (value: boolean) => {
+						plugin.settings.caldavExport.enableBasesViewFilter = value;
+						save();
+					},
+				})
+			);
+
+			group.addSetting((setting) =>
+				configureTextSetting(setting, {
+					name: translate(
+						"settings.integrations.caldavExport.caldavExportBaseViewPath.name"
+					),
+					desc: translate(
+						"settings.integrations.caldavExport.caldavExportBaseViewPath.description"
+					),
+					placeholder: translate(
+						"settings.integrations.caldavExport.caldavExportBaseViewPath.placeholder"
+					),
+					getValue: () => plugin.settings.caldavExport.caldavExportBaseViewPath || "",
+					setValue: async (value: string) => {
+						plugin.settings.caldavExport.caldavExportBaseViewPath = value;
+						save();
+					},
+				})
+			);
+
+			group.addSetting((setting) =>
+				configureNumberSetting(setting, {
+					name: translate("settings.integrations.caldavExport.autoExportInterval.name"),
+					desc: translate(
+						"settings.integrations.caldavExport.autoExportInterval.description"
+					),
+					placeholder: "60",
+					min: 1,
+					max: 1440,
+					getValue: () => plugin.settings.caldavExport.autoExportInterval ?? 60,
+					setValue: async (value: number) => {
+						plugin.settings.caldavExport.autoExportInterval = Math.max(
+							1,
+							Math.min(1440, value)
+						);
+						save();
+						if (
+							plugin.autoExportService &&
+							plugin.settings.caldavExport.enabled &&
+							plugin.settings.caldavExport.autoExportInterval > 0
+						) {
+							plugin.autoExportService.startCalDAVExport();
+						}
+					},
+				})
+			);
+
+			group.addSetting((setting) => {
+				setting.setName(translate("settings.integrations.caldavExport.exportNow.name"));
+				setting.setDesc(
+					translate("settings.integrations.caldavExport.exportNow.description")
+				);
+
+				const button = setting.addButton((button) => {
+					button.setButtonText(
+						translate("settings.integrations.caldavExport.exportNow.buttonText")
+					);
+					button.onClick(async () => {
+						try {
+							if (plugin.autoExportService) {
+								await plugin.autoExportService.exportCalDAVNow();
+								new Notice(
+									translate(
+										"settings.integrations.caldavExport.exportNow.notices.success"
+									)
+								);
+							} else {
+								new Notice(
+									translate(
+										"settings.integrations.caldavExport.exportNow.notices.serviceUnavailable"
+									)
+								);
+							}
+						} catch (error) {
+							new Notice(
+								translate(
+									"settings.integrations.caldavExport.exportNow.notices.failure",
+									{
+										error:
+											error instanceof Error ? error.message : String(error),
+									}
+								)
+							);
+						}
+					});
+				});
+				return setting;
+			});
+
+			group.addSetting((setting) =>
+				configureToggleSetting(setting, {
+					name:
+						translate("settings.integrations.caldavExport.debugLogging.name") ||
+						"Debug logging",
+					desc:
+						translate("settings.integrations.caldavExport.debugLogging.description") ||
+						"Show detailed debug logs for CalDAV export (verbose)",
+					getValue: () => plugin.settings.caldavExport.enableDebugLogging ?? false,
+					setValue: (value: boolean) => {
+						plugin.settings.caldavExport.enableDebugLogging = value;
+						save();
+					},
+				})
+			);
+		}
+	);
+
 
 	// HTTP API Section (Skip on mobile)
 	if (!Platform.isMobile) {

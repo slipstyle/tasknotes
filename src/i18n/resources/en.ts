@@ -2085,6 +2085,119 @@ export const en: TranslationTree = {
 					openInObsidian: "Open in Obsidian",
 				},
 			},
+			caldavExport: {
+				header: "Export Tasks to CalDAV",
+				description:
+					"Push tasks directly to a CalDAV server (Nextcloud, ownCloud, etc.). Unlike ICS export, CalDAV supports native reminders (VALARMs).",
+				url: {
+					name: "CalDAV URL",
+					description: "Full URL to your CalDAV calendar",
+					placeholder: "https://nextcloud.example.com/remote.php/dav/calendars/username/",
+				},
+				username: {
+					name: "Username",
+					description: "Username or app-specific password",
+					placeholder: "your-username",
+				},
+				password: {
+					name: "Password",
+					description: "Password or app-specific password",
+					placeholder: "your-password",
+				},
+				calendarName: {
+					name: "Calendar Name",
+					description: "Name of the calendar to create/update",
+					placeholder: "TaskNotes",
+				},
+				includeReminders: {
+					name: "Include Reminders",
+					description:
+						"Include task reminders as VALARMs in CalDAV events. This works with CalDAV (unlike ICS subscriptions).",
+				},
+				includeRecurrence: {
+					name: "Export recurring tasks as series",
+					description:
+						"When enabled, adds RRULE to recurring tasks so they appear as repeating events in CalDAV calendars.",
+				},
+				concurrentExports: {
+					name: "Concurrent export tasks",
+					description:
+						"Number of parallel requests to use when exporting. Higher values are faster but may overwhelm slower servers. Default: 5. Range: 1-100.",
+				},
+				enableBasesViewFilter: {
+					name: "Filter by Bases view",
+					description: "Only export tasks that match the selected Bases view filter.",
+				},
+				caldavExportBaseViewPath: {
+					name: "Bases view path",
+					description:
+						"Path to the Bases view file for filtering (format: path/to/file.base#ViewName)",
+					placeholder: "path/to/file.base#ViewName",
+				},
+				enableAutoExport: {
+					name: "Enable auto-export",
+					description: "Automatically export tasks to CalDAV at regular intervals",
+				},
+				autoExportInterval: {
+					name: "Auto-export interval (minutes)",
+					description: "How often to automatically export tasks to CalDAV",
+					placeholder: "60",
+				},
+				exportNow: {
+					name: "Manual export",
+					description: "Manually trigger a CalDAV export",
+					buttonText: "Export Now",
+					notices: {
+						success: "CalDAV export completed successfully",
+						failure: "CalDAV export failed: {error}",
+						serviceUnavailable: "CalDAV export service not available",
+					},
+					status: {
+						title: "Status",
+						lastExport: "Last export: {time}",
+						noExports: "No exports yet",
+						nextExport: "Next export: {time}",
+						notScheduled: "Not scheduled",
+						serviceNotInitialized: "Service not initialized",
+					},
+				},
+				wipeRiskWarning: {
+					text: "WARNING: This will first delete ALL events on the target calendar and then create the TaskNotes events, on EACH export! Use a dedicated calendar for TaskNotes!",
+					checkbox: "I understand this will replace all events in the target calendar",
+				},
+				testConnection: {
+					name: "Test Connection",
+					buttonText: "Test Connection",
+					testing: "Testing connection...",
+					success: "Connection successful!",
+					failed: "Connection failed: {error}",
+				},
+				enable: {
+					name: "Enable CalDAV Export",
+					description:
+						"When enabled, tasks with dates will be pushed to the CalDAV server on each export.",
+				},
+				debugLogging: {
+					name: "Debug logging",
+					description:
+						"Show detailed debug logs for CalDAV export (verbose, per-task logs)",
+				},
+				notices: {
+					notEnabled:
+						"CalDAV export is not enabled. Configure it in Settings > Integrations.",
+					notConfigured:
+						"CalDAV export is not configured. Please enter URL and credentials.",
+					notAcknowledged:
+						"You must acknowledge the wipe risk before enabling CalDAV export.",
+					serviceNotAvailable: "CalDAV service not available",
+					exportSuccess: "Exported {count} tasks to CalDAV",
+					exportFailed: "CalDAV export failed: {message}",
+					exportPartial: "CalDAV export partial: {success} succeeded, {failed} failed",
+					testingConnection: "Testing CalDAV connection...",
+					connectionSuccess: "CalDAV connection successful",
+					connectionFailed: "CalDAV connection failed: {error}",
+				},
+			},
 			httpApi: {
 				header: "HTTP API",
 				description: "Enable HTTP API for external integrations and automations.",
