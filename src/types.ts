@@ -463,7 +463,7 @@ export interface TaskInfo {
 	contexts?: string[];
 	projects?: string[];
 	recurrence?: string; // RFC 5545 recurrence rule string
-	recurrence_anchor?: 'scheduled' | 'completion'; // Determines if recurrence is from scheduled date (fixed) or completion date (flexible). Defaults to 'scheduled'
+	recurrence_anchor?: "scheduled" | "completion"; // Determines if recurrence is from scheduled date (fixed) or completion date (flexible). Defaults to 'scheduled'
 	complete_instances?: string[]; // Array of dates (YYYY-MM-DD) when recurring task was completed
 	skipped_instances?: string[]; // Array of dates (YYYY-MM-DD) when recurring task was skipped
 	completedDate?: string; // Date (YYYY-MM-DD) when task was marked as done
@@ -693,6 +693,7 @@ export interface FieldMapping {
 	timeEntries: string;
 	completeInstances: string;
 	skippedInstances: string; // User-configurable property name for skipped instances
+	autoReschedule: string; // User-configurable property name for auto-reschedule per-task override
 	blockedBy: string;
 	pomodoros: string; // For daily note pomodoro tracking
 	icsEventId: string; // For linking to ICS calendar events (stored as array in frontmatter)

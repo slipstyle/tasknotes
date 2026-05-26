@@ -1601,6 +1601,83 @@ export function renderIntegrationsTab(
 						})
 				);
 
+				// Export recurring as series toggle
+				group.addSetting((setting) =>
+					configureToggleSetting(setting, {
+						name: translate(
+							"settings.integrations.autoExport.exportRecurringAsSeries.name"
+						),
+						desc: translate(
+							"settings.integrations.autoExport.exportRecurringAsSeries.description"
+						),
+						getValue: () =>
+							plugin.settings.icsIntegration.exportRecurringAsSeries ?? false,
+						setValue: async (value: boolean) => {
+							plugin.settings.icsIntegration.exportRecurringAsSeries = value;
+							save();
+						},
+					})
+				);
+
+				// Bases view filter settings
+				group.addSetting((setting) =>
+					configureToggleSetting(setting, {
+						name: translate(
+							"settings.integrations.autoExport.basesViewFilter.enable.name"
+						),
+						desc: translate(
+							"settings.integrations.autoExport.basesViewFilter.enable.description"
+						),
+						getValue: () =>
+							plugin.settings.icsIntegration.enableBasesViewFilter ?? false,
+						setValue: async (value: boolean) => {
+							plugin.settings.icsIntegration.enableBasesViewFilter = value;
+							save();
+						},
+					})
+				);
+
+				if (plugin.settings.icsIntegration.enableBasesViewFilter) {
+					group.addSetting((setting) =>
+						configureTextSetting(setting, {
+							name: translate(
+								"settings.integrations.autoExport.basesViewFilter.viewPath.name"
+							),
+							desc: translate(
+								"settings.integrations.autoExport.basesViewFilter.viewPath.description"
+							),
+							placeholder: translate(
+								"settings.integrations.autoExport.basesViewFilter.viewPath.placeholder"
+							),
+							getValue: () =>
+								plugin.settings.icsIntegration.icsExportBaseViewPath || "",
+							setValue: async (value: string) => {
+								plugin.settings.icsIntegration.icsExportBaseViewPath =
+									value || undefined;
+								save();
+							},
+						})
+					);
+				}
+
+				// Include reminders as VALARMs toggle
+				group.addSetting((setting) =>
+					configureToggleSetting(setting, {
+						name: translate(
+							"settings.integrations.autoExport.includeRemindersAsValarms.name"
+						),
+						desc: translate(
+							"settings.integrations.autoExport.includeRemindersAsValarms.description"
+						),
+						getValue: () =>
+							plugin.settings.icsIntegration.includeRemindersAsValarms ?? false,
+						setValue: async (value: boolean) => {
+							plugin.settings.icsIntegration.includeRemindersAsValarms = value;
+							save();
+						},
+					})
+				);
+
 				// Manual export trigger button
 				group.addSetting(
 					(setting) =>

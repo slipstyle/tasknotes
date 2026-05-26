@@ -338,7 +338,7 @@ export class FilterService extends EventEmitter {
 	 * Recursively evaluate a filter node (group or condition) against a task
 	 * Returns true if the task matches the filter criteria
 	 */
-	private evaluateFilterNode(
+	public evaluateFilterNode(
 		node: FilterGroup | FilterCondition,
 		task: TaskInfo,
 		targetDate?: Date

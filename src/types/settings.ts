@@ -311,8 +311,14 @@ export interface ICSIntegrationSettings {
 	excludeCompletedFromExport: boolean; // Whether to exclude completed tasks from ICS exports
 	requireDueDateForExport: boolean; // Whether to export only tasks with due dates
 	requireScheduledDateForExport: boolean; // Whether to export only tasks with scheduled dates
+	exportRecurringAsSeries: boolean; // Whether to add RRULE to recurring tasks for calendar subscriptions
 	// Task creation from ICS events
 	useICSEndAsDue: boolean; // Whether to use ICS event end time as task due date
+	// Bases view filtering
+	enableBasesViewFilter: boolean; // Whether to filter tasks using a Bases view
+	icsExportBaseViewPath?: string; // Path to Bases view file for filtering (format: path/to/file.base#ViewName)
+	// Reminder export
+	includeRemindersAsValarms: boolean; // Whether to include task reminders as VALARM entries in ICS export
 }
 
 /**

@@ -1,6 +1,7 @@
-import { TaskInfo } from "../types";
+import { TaskInfo, Reminder } from "../types";
 import { format, parseISO } from "date-fns";
 import { createTaskNotesLogger } from "../utils/tasknotesLogger";
+import { addDTSTARTToRecurrenceRule } from "../utils/helpers";
 
 const tasknotesLogger = createTaskNotesLogger({ tag: "Services/CalendarExportService" });
 
@@ -19,6 +20,8 @@ export interface ICSExportOptions {
 	requireScheduledDate?: boolean; // Only include tasks with a scheduled date in multi-task exports
 	includeObsidianLink?: boolean; // Include an obsidian:// link back to the source task note
 	vaultName?: string; // Vault name used when includeObsidianLink is enabled
+	includeRecurrence?: boolean; // Add RRULE to recurring tasks
+	includeReminders?: boolean; // Add VALARMs for task reminders
 }
 
 export interface ICSDownloadFile {
@@ -560,6 +563,90 @@ export class CalendarExportService {
 	}
 
 	/**
+	 * Generate VALARM entries for a task reminder
+	 * Returns ICS lines for the VALARM, or null if reminder cannot be exported
+	 */
+	private static generateVALARM(task: TaskInfo, reminder: Reminder): string[] | null {
+		let trigger: string;
+		let description: string;
+
+		if (reminder.type === "absolute") {
+			// Absolute reminders: use the absolute time directly
+			// Convert to ICS format: YYYYMMDDTHHMMSSZ
+			if (!reminder.absoluteTime) {
+				console.warn(
+					`TaskNotes ICS Export: Absolute reminder missing absoluteTime, skipping: ${task.title}`
+				);
+				return null;
+			}
+			trigger = `VALUE=DATE-TIME:${this.formatDateToICS(new Date(reminder.absoluteTime))}`;
+			description = reminder.description || `${task.title} - at scheduled time`;
+		} else {
+			// Relative reminders: use offset from scheduled or due date
+			if (!reminder.offset) {
+				console.warn(
+					`TaskNotes ICS Export: Relative reminder missing offset, skipping: ${task.title}`
+				);
+				return null;
+			}
+
+			const referenceDate = reminder.relatedTo === "due" ? task.due : task.scheduled;
+
+			if (!referenceDate) {
+				console.warn(
+					`TaskNotes ICS Export: Reminder references ${reminder.relatedTo} but task has no ${reminder.relatedTo} date, skipping reminder for: ${task.title}`
+				);
+				return null;
+			}
+
+			// Use the reminder's offset directly (e.g., -PT15M)
+			trigger = reminder.offset;
+
+			// Generate description based on offset direction
+			const offsetMinutes = this.parseISO8601Duration(reminder.offset);
+			const direction = offsetMinutes < 0 ? "before" : "after";
+			const absMinutes = Math.abs(offsetMinutes);
+
+			let timeDesc: string;
+			if (absMinutes >= 60) {
+				const hours = Math.floor(absMinutes / 60);
+				timeDesc = hours === 1 ? "1 hour" : `${hours} hours`;
+			} else {
+				timeDesc = absMinutes === 1 ? "1 minute" : `${absMinutes} minutes`;
+			}
+
+			description = reminder.description || `${task.title} - ${timeDesc} ${direction}`;
+		}
+
+		return [
+			"BEGIN:VALARM",
+			`TRIGGER:${trigger}`,
+			"ACTION:DISPLAY",
+			`DESCRIPTION:${this.escapeICSText(description)}`,
+			"END:VALARM",
+		];
+	}
+
+	/**
+	 * Parse ISO 8601 duration to minutes
+	 * Supports PT15M, PT1H, PT30M, -PT15M, -PT1H, etc.
+	 */
+	private static parseISO8601Duration(duration: string): number {
+		const match = duration.match(/^(-?)PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/);
+		if (!match) {
+			return 0;
+		}
+
+		const negative = match[1] === "-";
+		const hours = parseInt(match[2] || "0", 10);
+		const minutes = parseInt(match[3] || "0", 10);
+		const seconds = parseInt(match[4] || "0", 10);
+
+		const totalMinutes = hours * 60 + minutes + seconds / 60;
+		return negative ? -totalMinutes : totalMinutes;
+	}
+
+	/**
 	 * Generate ICS content for multiple tasks
 	 */
 	static generateMultipleTasksICSContent(tasks: TaskInfo[], options?: ICSExportOptions): string {
@@ -661,6 +748,75 @@ export class CalendarExportService {
 				lines.push(`STATUS:${this.getVEventStatus(task.status)}`);
 			}
 
+			// Add RRULE for recurring tasks when enabled
+			if (options?.includeRecurrence && task.recurrence) {
+				const rruleWithDTSTART = addDTSTARTToRecurrenceRule(task);
+				if (rruleWithDTSTART) {
+					// Extract original DTSTART from recurrence (for full history)
+					const dtstartMatch = rruleWithDTSTART.match(/^DTSTART:([^;]+)/);
+					const originalDTSTART = dtstartMatch ? dtstartMatch[1] : null;
+
+					if (originalDTSTART) {
+						// Determine if it's a date-only or datetime
+						const isDateOnly = originalDTSTART.length === 8;
+
+						// Parse the original DTSTART into a Date
+						let startDate: Date;
+						if (isDateOnly) {
+							// Format: YYYYMMDD -> Date
+							const year = parseInt(originalDTSTART.slice(0, 4));
+							const month = parseInt(originalDTSTART.slice(4, 6)) - 1;
+							const day = parseInt(originalDTSTART.slice(6, 8));
+							startDate = new Date(year, month, day);
+						} else {
+							// Format: YYYYMMDDTHHMMSS or YYYYMMDDTHHMMSSZ
+							startDate = this.parseICSDate(originalDTSTART);
+						}
+
+						// Calculate DTEND based on existing logic (respects useDurationForExport)
+						let endDate: Date;
+						if (
+							options?.useDurationForExport &&
+							task.timeEstimate &&
+							task.timeEstimate > 0
+						) {
+							// Use timeEstimate as duration
+							endDate = new Date(startDate.getTime() + task.timeEstimate * 60 * 1000);
+						} else if (!isDateOnly) {
+							// For timed events without duration: default +1 hour
+							endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
+						} else {
+							// For all-day events without duration: default +1 day
+							endDate = new Date(startDate);
+							endDate.setDate(endDate.getDate() + 1);
+						}
+
+						// Format DTSTART for ICS
+						if (isDateOnly) {
+							lines.push(`DTSTART;VALUE=DATE:${this.formatDateToICS(startDate)}`);
+							lines.push(`DTEND;VALUE=DATE:${this.formatDateToICS(endDate)}`);
+						} else {
+							lines.push(`DTSTART:${this.formatDateToICS(startDate)}`);
+							lines.push(`DTEND:${this.formatDateToICS(endDate)}`);
+						}
+					}
+
+					// Strip embedded DTSTART from RRULE (keep only the rule - valid RFC 5545)
+					const rruleLine = rruleWithDTSTART.replace(/^DTSTART:[^;]+;?/, "");
+					lines.push(`RRULE:${rruleLine}`);
+				}
+			}
+
+			// Add VALARMs for task reminders when enabled
+			if (options?.includeReminders && task.reminders && task.reminders.length > 0) {
+				for (const reminder of task.reminders) {
+					const valarmLines = this.generateVALARM(task, reminder);
+					if (valarmLines) {
+						lines.push(...valarmLines);
+					}
+				}
+			}
+
 			lines.push("END:VEVENT");
 		});
 
@@ -678,6 +834,7 @@ export class CalendarExportService {
 			!options?.requireScheduledDate
 		) {
 			return tasks;
+
 		}
 
 		const completedStatuses = new Set(
@@ -704,6 +861,7 @@ export class CalendarExportService {
 		const normalizedStatus = status.trim().toLowerCase();
 		if (normalizedStatus === "cancelled" || normalizedStatus === "canceled") {
 			return "CANCELLED";
+
 		}
 		if (normalizedStatus === "tentative") {
 			return "TENTATIVE";

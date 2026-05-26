@@ -181,8 +181,14 @@ export const DEFAULT_ICS_INTEGRATION_SETTINGS: ICSIntegrationSettings = {
 	excludeCompletedFromExport: false, // Preserve existing behavior: include completed tasks
 	requireDueDateForExport: false, // Preserve existing behavior: include tasks without due dates
 	requireScheduledDateForExport: false, // Preserve existing behavior: include tasks without scheduled dates
+	exportRecurringAsSeries: false, // Preserve existing behavior: export recurring as single events
 	// Task creation defaults
 	useICSEndAsDue: false, // Preserve existing behavior: don't set due date from ICS events
+	// Bases view filtering defaults
+	enableBasesViewFilter: false, // Off by default - user opts in
+	icsExportBaseViewPath: undefined, // No default path
+	// Reminder export defaults
+	includeRemindersAsValarms: false, // Off by default - user opts in
 };
 
 export const DEFAULT_GOOGLE_CALENDAR_EXPORT: GoogleCalendarExportSettings = {

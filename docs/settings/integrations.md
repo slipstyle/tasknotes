@@ -2,7 +2,6 @@
 
 These settings control the integration with other plugins and services, such as Bases and external calendars.
 
-
 ![Integrations Settings](../assets/settings-integrations.png)
 
 ## Bases Integration
@@ -52,6 +51,7 @@ The **Target calendar** setting used for exporting tasks to Google Calendar is a
 For timed task exports, **Default reminder** accepts one or more minute offsets separated by commas, such as `60, 1440`. All-day task exports use the target Google Calendar's default reminder settings.
 
 When connected, displays:
+
 - Connected account email
 - Connection time
 - Last sync time
@@ -62,6 +62,7 @@ When connected, displays:
 Provide **Client ID** and **Client Secret** from Azure App Registration, then use **Connect Microsoft Calendar** to authenticate. **Disconnect** removes stored credentials and sync access.
 
 When connected, displays:
+
 - Connected account email
 - Connection time
 - Last sync time
@@ -82,6 +83,7 @@ ICS settings define how subscribed calendar events are represented in your vault
 Automatic export keeps an ICS feed of your tasks updated on a schedule. Configure whether it is enabled, where the file is written (vault-relative path), the refresh interval, and use **Export now** for immediate output.
 
 Export filters can omit archived tasks, completed tasks, tasks without due dates, or tasks without scheduled dates. When both due-date and scheduled-date requirements are enabled, exported tasks must have both dates.
+For detailed documentation on ICS export features including filtering by Bases views, see [ICS Export](../features/ics-export.md).
 
 ## HTTP API
 
@@ -91,6 +93,7 @@ Changes to API enablement or port require an Obsidian restart to take effect.
 
 !!! warning
     The HTTP API binds to loopback only and browser CORS is limited to loopback origins. If the authentication token is empty, local API requests are still unauthenticated. Set a token unless your local environment is fully trusted.
+If the authentication token is empty, API requests are unauthenticated. Set a token unless your environment is fully trusted.
 
 ## Webhooks
 

@@ -1907,6 +1907,36 @@ export const en: TranslationTree = {
 					description:
 						"When enabled, only tasks with a scheduled date are included in ICS exports.",
 				},
+				exportRecurringAsSeries: {
+					name: "Export recurring tasks as series",
+					description:
+						"When enabled, adds RRULE to recurring tasks so they appear as repeating events in calendars. Calendar apps will show past and future occurrences. When disabled, recurring tasks export as single one-time events.",
+				},
+				includeRemindersAsValarms: {
+					name: "Include reminders as alarms",
+					description:
+						"When enabled, exports task reminders as VALARM entries in the ICS file. This allows calendar apps to show notifications before scheduled/due dates. Works with relative reminders (scheduled:offset or due:offset) and absolute reminders.",
+				},
+				basesViewFilter: {
+					header: "Filter by Bases View",
+					description: "Export only tasks matching a Bases view filter",
+					enable: {
+						name: "Enable Bases view filter",
+						description: "Filter exported tasks using a Bases view",
+					},
+					viewPath: {
+						name: "Bases view path",
+						description:
+							"Path to a .base file, optionally with #ViewName for specific view",
+						placeholder: "TaskNotes/Views/my-filter.base#Tasks",
+					},
+					notices: {
+						fileNotFound: "Bases view file not found: {path}",
+						viewNotFound: "View not found in {path}: {viewName}",
+						noFilters: "No filters found in Bases view, exporting all tasks",
+						filterError: "Error applying filter, exporting all tasks",
+					},
+				},
 				exportNow: {
 					name: "Export now",
 					description: "Manually trigger an immediate export",

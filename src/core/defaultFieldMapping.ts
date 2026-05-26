@@ -18,6 +18,7 @@ export const DEFAULT_FIELD_MAPPING: FieldMapping = {
 	timeEntries: "timeEntries",
 	completeInstances: "complete_instances",
 	skippedInstances: "skipped_instances",
+	autoReschedule: "autoReschedule",
 	blockedBy: "blockedBy",
 	pomodoros: "pomodoros",
 	icsEventId: "icsEventId",
