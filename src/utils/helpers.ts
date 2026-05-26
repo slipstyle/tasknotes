@@ -492,12 +492,14 @@ export function getNextUncompletedOccurrence(task: TaskInfo): Date | null {
  * Returns the updated scheduled date or null if no next occurrence
  * @param task Task info object
  * @param maintainDueOffset Whether to maintain the due date offset (from settings)
+ * @param useRecurrenceTime Whether to use recurrence DTSTART time instead of scheduled time
  */
 export function updateToNextScheduledOccurrence(
 	task: TaskInfo,
-	maintainDueOffset = true
+	maintainDueOffset = true,
+	useRecurrenceTime = false
 ): { scheduled: string | null; due: string | null } {
-	return updateToNextScheduledOccurrenceCore(task, maintainDueOffset);
+	return updateToNextScheduledOccurrenceCore(task, maintainDueOffset, useRecurrenceTime);
 }
 
 /**

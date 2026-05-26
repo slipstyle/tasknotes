@@ -190,6 +190,8 @@ export const DEFAULT_ICS_INTEGRATION_SETTINGS: ICSIntegrationSettings = {
 	icsExportBaseViewPath: undefined, // No default path
 	// Reminder export defaults
 	includeRemindersAsValarms: false, // Off by default - user opts in
+	// Export format defaults
+	exportFormat: "vevent", // Default to calendar events for backward compatibility
 };
 
 export const DEFAULT_GOOGLE_CALENDAR_EXPORT: GoogleCalendarExportSettings = {
@@ -222,6 +224,7 @@ export const DEFAULT_CALDAV_EXPORT_SETTINGS: CalDAVExportSettings = {
 	autoExportInterval: 60,
 	acknowledgedWipeRisk: false,
 	enableDebugLogging: false,
+	exportFormat: "vevent",
 };
 
 export const DEFAULT_PROJECT_AUTOSUGGEST: ProjectAutosuggestSettings = {
@@ -410,6 +413,7 @@ export const DEFAULT_SETTINGS: TaskNotesSettings = {
 	// Recurring task behavior defaults
 	maintainDueDateOffsetInRecurring: false,
 	resetCheckboxesOnRecurrence: false, // Off by default - user opts in
+	useRecurrenceTimeForNextOccurrence: false, // Off by default - maintain backward compatibility
 	// Frontmatter link format defaults
 	useFrontmatterMarkdownLinks: false, // Default to wikilinks for compatibility
 	// OAuth Calendar Integration defaults

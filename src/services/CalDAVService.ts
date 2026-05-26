@@ -14,6 +14,7 @@ export interface CalDAVPushOptions {
 	includeRecurrence: boolean;
 	useDurationForExport: boolean;
 	concurrentExports: number;
+	exportFormat?: "vevent" | "vtodo";
 }
 
 export interface CalDAVPushResult {
@@ -136,71 +137,85 @@ export class CalDAVService {
 		tasks = freshTasks;
 		this.logDebug(`[CalDAV] Refreshed ${tasks.length} tasks from cache`);
 
-		// Step 2: Build sets for diff calculation using caldavEventId (UUID)
-		const taskIds = new Set<string>(); // caldavEventId -> Task
-		const taskIdMap = new Map<string, TaskInfo>();
+		// Step 2: Build maps for diff calculation using caldavEventUrl (more reliable than caldavEventId)
+		// Extract filename from caldavEventUrl: https://.../caldav/UUID.ics -> UUID.ics
+		const taskUrls = new Map<string, TaskInfo>(); // filename -> task
 
 		for (const task of tasks) {
-			if (task.caldavEventId) {
-				taskIds.add(task.caldavEventId);
-				taskIdMap.set(task.caldavEventId, task);
+			if (task.caldavEventUrl) {
+				const url = new URL(task.caldavEventUrl);
+				const filename = url.pathname.split("/").pop() || "";
+				if (filename) {
+					taskUrls.set(filename, task);
+				}
 			}
 		}
 
-		// DEBUG: Log task IDs from frontmatter
-		const taskIdArray = Array.from(taskIds);
+		// DEBUG: Log task URLs from frontmatter
+		const taskUrlArray = Array.from(taskUrls.keys());
 		this.logDebug(
-			`[CalDAV] Task IDs from frontmatter: ${taskIdArray.slice(0, 5).join(", ")}... (${taskIdArray.length} total)`
+			`[CalDAV] Task URLs from frontmatter: ${taskUrlArray.slice(0, 5).join(", ")}... (${taskUrlArray.length} total)`
 		);
 
-		const caldavIds = new Set<string>();
-		const caldavIdToHref = new Map<string, string>(); // caldavEventId -> href (for deletion)
+		// Build map of CalDAV hrefs (just use the full href from PROPFIND)
+		const caldavHrefs = new Set<string>();
+		const caldavHrefToInfo = new Map<string, { href: string; uid: string }>();
 
 		for (const event of existingEvents) {
-			if (event.uid) {
-				caldavIds.add(event.uid);
-				caldavIdToHref.set(event.uid, event.href);
+			// Extract filename from href
+			const href = event.href;
+			const filename = href.split("/").pop() || "";
+			if (filename) {
+				caldavHrefs.add(filename);
+				caldavHrefToInfo.set(filename, { href, uid: event.uid });
 			}
 		}
 
-		// DEBUG: Log CalDAV UIDs from PROPFIND
-		const caldavIdArray = Array.from(caldavIds);
+		// DEBUG: Log CalDAV hrefs from PROPFIND
+		const caldavHrefArray = Array.from(caldavHrefs);
 		this.logDebug(
-			`[CalDAV] CalDAV UIDs from PROPFIND: ${caldavIdArray.slice(0, 5).join(", ")}... (${caldavIdArray.length} total)`
+			`[CalDAV] CalDAV hrefs from PROPFIND: ${caldavHrefArray.slice(0, 5).join(", ")}... (${caldavHrefArray.length} total)`
 		);
 
-		// Step 3: Calculate diffs using UUID matching
+		// Step 3: Calculate diffs using URL matching
 		const toCreate: TaskInfo[] = []; // In TaskNotes, not in CalDAV
 		const toUpdate: TaskInfo[] = []; // In both, needs update
 		const toDelete: string[] = []; // In CalDAV, not in TaskNotes
 
 		for (const task of tasks) {
-			if (task.caldavEventId && caldavIds.has(task.caldavEventId)) {
-				// Exists in both - needs update
-				toUpdate.push(task);
+			if (task.caldavEventUrl) {
+				const url = new URL(task.caldavEventUrl);
+				const filename = url.pathname.split("/").pop() || "";
+				if (filename && caldavHrefs.has(filename)) {
+					// Exists in both - needs update
+					toUpdate.push(task);
+				} else {
+					// New task or URL not found in CalDAV
+					toCreate.push(task);
+				}
 			} else {
-				// New task or task without stored ID
+				// No URL stored - treat as new
 				toCreate.push(task);
 			}
 		}
 
 		// DEBUG: Show orphan calculation
 		let orphanCount = 0;
-		for (const caldavId of caldavIds) {
-			if (!taskIds.has(caldavId)) {
+		for (const filename of caldavHrefs) {
+			if (!taskUrls.has(filename)) {
 				orphanCount++;
 			}
 		}
 		this.logDebug(
-			`[CalDAV] Orphan check: CalDAV has ${caldavIds.size} UIDs, TaskNotes has ${taskIds.size} IDs, should delete ~${orphanCount}`
+			`[CalDAV] Orphan check: CalDAV has ${caldavHrefs.size} hrefs, TaskNotes has ${taskUrls.size} URLs, should delete ~${orphanCount}`
 		);
 
-		for (const caldavId of caldavIds) {
-			if (!taskIds.has(caldavId)) {
+		for (const filename of caldavHrefs) {
+			if (!taskUrls.has(filename)) {
 				// Exists in CalDAV but not in TaskNotes - orphan to delete
-				const href = caldavIdToHref.get(caldavId);
-				if (href) {
-					toDelete.push(href);
+				const eventData = caldavHrefToInfo.get(filename);
+				if (eventData?.href) {
+					toDelete.push(eventData.href);
 				}
 			}
 		}
@@ -317,8 +332,9 @@ export class CalDAVService {
 				for (const result of results) {
 					if (result.success) {
 						eventsPushed++;
-						// Update last synced time
-						await this.saveTaskLastSynced(result.task.path);
+						// Note: Saving caldavLastSynced causes every task to be modified on every export
+						// -> causes git to stage all tasks on every sync
+						// await this.saveTaskLastSynced(result.task.path); // DISABLED - causes git noise
 					} else if (result.error) {
 						errors.push(`Task "${result.task.title}": ${result.error}`);
 					}
@@ -379,26 +395,6 @@ export class CalDAVService {
 			this.logDebug(`[CalDAV] Saved event ID for: ${taskPath}`);
 		} catch (error) {
 			console.error(`[CalDAV] Failed to save event ID for ${taskPath}:`, error);
-		}
-	}
-
-	/**
-	 * Save last synced timestamp to task's frontmatter
-	 */
-	private async saveTaskLastSynced(taskPath: string): Promise<void> {
-		try {
-			const file = this.plugin.app.vault.getAbstractFileByPath(taskPath);
-			if (!file || !(file instanceof TFile)) {
-				return;
-			}
-
-			const fieldName = this.plugin.fieldMapper.toUserField("caldavLastSynced");
-			const now = new Date().toISOString();
-			await this.plugin.app.fileManager.processFrontMatter(file, (frontmatter) => {
-				frontmatter[fieldName] = now;
-			});
-		} catch (error) {
-			console.error(`[CalDAV] Failed to save last synced for ${taskPath}:`, error);
 		}
 	}
 
@@ -511,17 +507,18 @@ export class CalDAVService {
 			`[CalDAV] Regex matches - href: ${hrefMatches.length}, calendar-data: ${calDataMatches.length}`
 		);
 
+		// Filter hrefs to only include .ics files BEFORE pairing with calendar-data
+		// This fixes the index mismatch when href count != calData count
+		const icsHrefMatches = hrefMatches.filter((m) => m[1].endsWith(".ics"));
+
 		// Pair up hrefs with calendar-data and extract UID from ICS content
-		for (let i = 0; i < hrefMatches.length; i++) {
-			const href = hrefMatches[i][1];
-			// Only include .ics files (not the calendar itself)
-			if (href.endsWith(".ics")) {
-				const calData = calDataMatches[i]?.[1] || "";
-				// Extract UID from inside the ICS content
-				const uidMatch = calData.match(/^UID:(.+)$/m);
-				const uid = uidMatch?.[1] || "";
-				events.push({ href, uid });
-			}
+		for (let i = 0; i < icsHrefMatches.length; i++) {
+			const href = icsHrefMatches[i][1];
+			const calData = calDataMatches[i]?.[1] || "";
+			// Extract UID from inside the ICS content
+			const uidMatch = calData.match(/^UID:(.+)$/m);
+			const uid = uidMatch?.[1] || "";
+			events.push({ href, uid });
 		}
 
 		this.logDebug(`[CalDAV] Parsed ${events.length} events with UIDs`);
@@ -572,23 +569,27 @@ export class CalDAVService {
 		// Use existing caldavEventId if available (for updates), otherwise generate new UUID (for creates)
 		const eventId = task.caldavEventId || crypto.randomUUID();
 
+		const isVtodo = options.exportFormat === "vtodo";
 		const icsContent = CalendarExportService.generateMultipleTasksICSContent([task], {
 			includeReminders: options.includeReminders,
 			includeRecurrence: options.includeRecurrence,
 			useDurationForExport: options.useDurationForExport,
+			timezone: isVtodo ? undefined : (Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York"),
+			exportFormat: options.exportFormat,
 		});
 
-		let veventMatch = icsContent.match(/BEGIN:VEVENT[\s\S]*?END:VEVENT/);
-		if (!veventMatch) {
-			throw new Error("Failed to generate VEVENT");
+		const componentType = isVtodo ? "VTODO" : "VEVENT";
+		const componentMatch = icsContent.match(new RegExp(`BEGIN:${componentType}[\\s\\S]*?END:${componentType}`));
+		if (!componentMatch) {
+			throw new Error(`Failed to generate ${componentType}`);
 		}
 
 		// Unfold ICS lines first (RFC 5545 line folding - lines > 75 chars wrap with space)
 		// This ensures our UID replacement works correctly on folded UIDs
-		const unfoldedVevent = veventMatch[0].replace(/\r\n[ \t]/g, "");
+		const unfoldedComponent = componentMatch[0].replace(/\r\n[ \t]/g, "");
 
-		// Replace the UID in the VEVENT with our stable UUID
-		const veventContent = unfoldedVevent.replace(/^UID:.*$/m, `UID:${eventId}`);
+		// Replace the UID in the component with our stable UUID
+		const componentContent = unfoldedComponent.replace(/^UID:.*$/m, `UID:${eventId}`);
 
 		const calendarUrl = `${baseUrl}${eventId}.ics`;
 
@@ -599,7 +600,7 @@ export class CalDAVService {
 				Authorization: authHeader,
 				"Content-Type": "text/calendar; charset=utf-8",
 			},
-			body: this.wrapInICSCalendar(veventContent),
+			body: this.wrapInICSCalendar(componentContent),
 			throw: false,
 		});
 
@@ -616,16 +617,12 @@ export class CalDAVService {
 		return `tasknotes-${pathHash}`;
 	}
 
-	private wrapInICSCalendar(vevent: string): string {
-		const now = new Date()
-			.toISOString()
-			.replace(/[-:]/g, "")
-			.replace(/\.\d{3}/, "");
+	private wrapInICSCalendar(component: string): string {
 		return `BEGIN:VCALENDAR
 VERSION:2.0
 PRODID:-//TaskNotes//EN
 CALSCALE:GREGORIAN
-${vevent}
+${component}
 END:VCALENDAR`;
 	}
 }

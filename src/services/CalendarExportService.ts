@@ -24,6 +24,8 @@ export interface ICSExportOptions {
 	vaultName?: string; // Vault name used when includeObsidianLink is enabled
 	includeRecurrence?: boolean; // Add RRULE to recurring tasks
 	includeReminders?: boolean; // Add VALARMs for task reminders
+	timezone?: string; // IANA timezone for CalDAV (e.g., "America/Toronto") - adds TZID + VTIMEZONE
+	exportFormat?: "vevent" | "vtodo"; // Export as calendar events or task items (default: "vevent")
 }
 
 export interface ICSDownloadFile {
@@ -481,11 +483,8 @@ export class CalendarExportService {
 	private static parseTaskDate(dateStr: string): Date {
 		// Handle different date formats
 		if (dateStr.includes("T")) {
-			// ISO format: "2025-08-12T18:00:00"
+			// ISO format or local datetime
 			return parseISO(dateStr);
-		} else if (/^\d{4}-\d{2}-\d{2} /.test(dateStr)) {
-			// Space-separated datetime: "2025-08-12 18:00"
-			return parseISO(dateStr.replace(" ", "T"));
 		} else {
 			// Date only - assume start of day
 			return parseISO(`${dateStr}T00:00:00`);
@@ -493,8 +492,8 @@ export class CalendarExportService {
 	}
 
 	private static hasTimeComponent(dateStr: string): boolean {
-		// Handles ISO format "2025-08-12T18:00" and space-separated "2025-08-12 18:00"
-		return dateStr.includes("T") || /^\d{4}-\d{2}-\d{2} \d/.test(dateStr);
+		// Matches both ISO format with T ("2025-08-12T18:00") and space-separated ("2025-08-12 18:00")
+		return dateStr.includes("T") || /\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(dateStr);
 	}
 
 	private static formatDateOnlyToICS(dateStr: string): string {
@@ -653,6 +652,10 @@ export class CalendarExportService {
 	 * Generate ICS content for multiple tasks
 	 */
 	static generateMultipleTasksICSContent(tasks: TaskInfo[], options?: ICSExportOptions): string {
+		if (options?.exportFormat === "vtodo") {
+			return this.generateMultipleTasksVTODOContent(tasks, options);
+		}
+
 		const filteredTasks = this.filterTasksForExport(tasks, options);
 
 		const now = new Date()
@@ -666,6 +669,12 @@ export class CalendarExportService {
 			"PRODID:-//TaskNotes//EN",
 			"CALSCALE:GREGORIAN",
 		];
+
+		// Add VTIMEZONE block when timezone is provided (Nextcloud/CalDAV)
+		if (options?.timezone) {
+			const tzLines = this.generateVTIMEZONE(options.timezone);
+			lines.push(...tzLines);
+		}
 
 		// Add each task as a VEVENT
 		filteredTasks.forEach((task, index) => {
@@ -687,21 +696,33 @@ export class CalendarExportService {
 
 				// If no start date, use task creation date or current date as fallback
 				if (!startLine) {
-					let fallbackDate: Date;
-					if (task.dateCreated) {
-						// Use task creation date if available
-						fallbackDate = new Date(task.dateCreated);
+					// Try to use task.scheduled for local time
+					if (options?.timezone && task.scheduled && task.scheduled.includes("T")) {
+						// Use local time directly - no UTC conversion
+						const startTime = this.formatLocalTime(task.scheduled);
+						const endTime = this.formatLocalEndTime(
+							task.scheduled,
+							task.timeEstimate || 60
+						);
+						startLine = `DTSTART;TZID=${options.timezone}:${startTime}`;
+						endLine = `DTEND;TZID=${options.timezone}:${endTime}`;
 					} else {
-						// Fallback to current date
-						fallbackDate = new Date();
-					}
-					const startICS = this.formatDateToICS(fallbackDate);
-					startLine = `DTSTART:${startICS}`;
+						// Fallback to task creation date or current date in UTC
+						let fallbackDate: Date;
+						if (task.dateCreated) {
+							fallbackDate = new Date(task.dateCreated);
+						} else {
+							fallbackDate = new Date();
+						}
+						const startICS = this.formatDateToICS(fallbackDate);
+						startLine = `DTSTART:${startICS}`;
 
-					// Set end time to 1 hour after start for tasks without duration
-					if (!endLine) {
-						const endDate = new Date(fallbackDate.getTime() + 60 * 60 * 1000); // +1 hour
-						endLine = `DTEND:${this.formatDateToICS(endDate)}`;
+						// Set end time to 1 hour after start for tasks without duration
+						if (!endLine) {
+							const endDate = new Date(fallbackDate.getTime() + 60 * 60 * 1000); // +1 hour
+							const endICS = this.formatDateToICS(endDate);
+							endLine = `DTEND:${endICS}`;
+						}
 					}
 				} else if (!endLine) {
 					const startValue = startLine.split(":", 2)[1];
@@ -715,7 +736,11 @@ export class CalendarExportService {
 						// If we have start but no end, add 1 hour duration
 						const startDate = this.parseICSDate(startValue);
 						const endDate = new Date(startDate.getTime() + 60 * 60 * 1000); // +1 hour
-						endLine = `DTEND:${this.formatDateToICS(endDate)}`;
+						const endICS = this.formatDateToICS(endDate);
+						const endDTEND = options?.timezone
+							? `DTEND;TZID=${options.timezone}:${endICS.replace("Z", "")}`
+							: `DTEND:${endICS}`;
+						endLine = endDTEND;
 					}
 				}
 
@@ -761,27 +786,50 @@ export class CalendarExportService {
 			if (options?.includeRecurrence && task.recurrence) {
 				const rruleWithDTSTART = addDTSTARTToRecurrenceRule(task);
 				if (rruleWithDTSTART) {
-					// Extract original DTSTART from recurrence (for full history)
-					const dtstartMatch = rruleWithDTSTART.match(/^DTSTART:([^;]+)/);
-					const originalDTSTART = dtstartMatch ? dtstartMatch[1] : null;
+					// NEW LOGIC: Use task.scheduled instead of recurrence's DTSTART for current occurrence
+					let startDate: Date | null = null;
+					let isDateOnly = false;
 
-					if (originalDTSTART) {
-						// Determine if it's a date-only or datetime
-						const isDateOnly = originalDTSTART.length === 8;
+					const scheduledHasTime = task.scheduled && task.scheduled.includes("T");
 
-						// Parse the original DTSTART into a Date
-						let startDate: Date;
-						if (isDateOnly) {
-							// Format: YYYYMMDD -> Date
-							const year = parseInt(originalDTSTART.slice(0, 4));
-							const month = parseInt(originalDTSTART.slice(4, 6)) - 1;
-							const day = parseInt(originalDTSTART.slice(6, 8));
-							startDate = new Date(year, month, day);
+					if (scheduledHasTime) {
+						// Scheduled has time component - use it
+						// parseTaskDate returns local time, formatDateToICS converts to UTC (per RFC 5545)
+						startDate = this.parseTaskDate(task.scheduled!);
+						isDateOnly = false;
+					} else if (task.scheduled) {
+						// Scheduled is date-only - check if recurrence has time
+						const dtstartMatch = task.recurrence?.match(/DTSTART:(\d{8}(?:T\d{6}Z?)?)/);
+						const recurrenceHasTime = dtstartMatch && dtstartMatch[1].length > 8;
+
+						if (recurrenceHasTime && dtstartMatch) {
+							// Recurrence has time - use it for this occurrence
+							// Strip Z to treat as local time, then convert to UTC for ICS
+							startDate = this.parseICSDate(dtstartMatch[1].replace("Z", ""));
+							isDateOnly = false;
 						} else {
-							// Format: YYYYMMDDTHHMMSS or YYYYMMDDTHHMMSSZ
-							startDate = this.parseICSDate(originalDTSTART);
+							// Both are date-only - all-day event
+							startDate = this.parseTaskDate(task.scheduled);
+							isDateOnly = true;
 						}
+					} else {
+						// No scheduled - fall back to recurrence's original DTSTART (legacy behavior)
+						const dtstartMatch = rruleWithDTSTART.match(/^DTSTART:([^;]+)/);
+						const originalDTSTART = dtstartMatch ? dtstartMatch[1] : null;
+						if (originalDTSTART) {
+							isDateOnly = originalDTSTART.length === 8;
+							if (isDateOnly) {
+								const year = parseInt(originalDTSTART.slice(0, 4));
+								const month = parseInt(originalDTSTART.slice(4, 6)) - 1;
+								const day = parseInt(originalDTSTART.slice(6, 8));
+								startDate = new Date(year, month, day);
+							} else {
+								startDate = this.parseICSDate(originalDTSTART);
+							}
+						}
+					}
 
+					if (startDate) {
 						// Calculate DTEND based on existing logic (respects useDurationForExport)
 						let endDate: Date;
 						if (
@@ -789,20 +837,16 @@ export class CalendarExportService {
 							task.timeEstimate &&
 							task.timeEstimate > 0
 						) {
-							// Use timeEstimate as duration
 							endDate = new Date(startDate.getTime() + task.timeEstimate * 60 * 1000);
 						} else if (!isDateOnly) {
-							// For timed events without duration: default +1 hour
 							endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
 						} else {
-							// For all-day events without duration: default +1 day
 							endDate = new Date(startDate);
 							endDate.setDate(endDate.getDate() + 1);
 						}
 
 						// Format DTSTART for ICS
 						if (isDateOnly) {
-							// For date-only, use local date components to avoid UTC conversion issues
 							const year = startDate.getFullYear();
 							const month = String(startDate.getMonth() + 1).padStart(2, "0");
 							const day = String(startDate.getDate()).padStart(2, "0");
@@ -814,8 +858,35 @@ export class CalendarExportService {
 							lines.push(`DTSTART;VALUE=DATE:${dateStr}`);
 							lines.push(`DTEND;VALUE=DATE:${endDateStr}`);
 						} else {
-							lines.push(`DTSTART:${this.formatDateToICS(startDate)}`);
-							lines.push(`DTEND:${this.formatDateToICS(endDate)}`);
+							// Use local time from task.scheduled without UTC conversion
+							let startTimeVal: string;
+							let endTimeVal: string;
+
+							if (
+								options?.timezone &&
+								task.scheduled &&
+								task.scheduled.includes("T")
+							) {
+								// Use local time directly for timezone-aware export
+								startTimeVal = this.formatLocalTime(task.scheduled);
+								endTimeVal = this.formatLocalEndTime(
+									task.scheduled,
+									task.timeEstimate || 60
+								);
+							} else {
+								// Fallback to UTC (for ICS export or when no scheduled time)
+								startTimeVal = this.formatDateToICS(startDate);
+								endTimeVal = this.formatDateToICS(endDate);
+							}
+
+							const dtstart = options?.timezone
+								? `DTSTART;TZID=${options.timezone}:${startTimeVal}`
+								: `DTSTART:${startTimeVal}`;
+							const dtend = options?.timezone
+								? `DTEND;TZID=${options.timezone}:${endTimeVal}`
+								: `DTEND:${endTimeVal}`;
+							lines.push(dtstart);
+							lines.push(dtend);
 						}
 					}
 
@@ -842,6 +913,181 @@ export class CalendarExportService {
 
 		// Join lines and ensure proper ICS line folding (max 75 chars per line)
 		return this.foldICSLines(lines.join("\r\n"));
+	}
+
+	/**
+	 * Generate ICS content with VTODO components for multiple tasks
+	 */
+	static generateMultipleTasksVTODOContent(
+		tasks: TaskInfo[],
+		options?: ICSExportOptions
+	): string {
+		const now = new Date()
+			.toISOString()
+			.replace(/[-:]/g, "")
+			.replace(/\.\d{3}/, "");
+
+		const lines = [
+			"BEGIN:VCALENDAR",
+			"VERSION:2.0",
+			"PRODID:-//TaskNotes//Task Export//EN",
+			"CALSCALE:GREGORIAN",
+		];
+
+		tasks.forEach((task, index) => {
+			const todoLines = this.generateSingleTaskVTODO(task, index, now, options);
+			lines.push(...todoLines);
+		});
+
+		lines.push("END:VCALENDAR");
+
+		return this.foldICSLines(lines.join("\r\n"));
+	}
+
+	/**
+	 * Generate a single VTODO component for a task
+	 */
+	private static generateSingleTaskVTODO(
+		task: TaskInfo,
+		index: number,
+		now: string,
+		options?: ICSExportOptions
+	): string[] {
+		const uid = `${task.path.replace(/[^a-zA-Z0-9]/g, "-")}-${index}-${Date.now()}@tasknotes`;
+		const lines: string[] = [];
+
+		lines.push("BEGIN:VTODO");
+		lines.push(`UID:${uid}`);
+		lines.push(`DTSTAMP:${now}`);
+
+		// SUMMARY (required)
+		lines.push(`SUMMARY:${this.escapeICSText(task.title)}`);
+
+		// DTSTART and DUE - RFC 5545 requires:
+		// 1. Both must use the same value type (DATE or DATE-TIME)
+		// 2. DUE must occur after DTSTART
+		const hasDue = !!task.due;
+		const hasScheduled = !!task.scheduled;
+		const dueHasTime = hasDue && this.hasTimeComponent(task.due!);
+		const scheduledHasTime = hasScheduled && this.hasTimeComponent(task.scheduled!);
+
+		if (hasDue && hasScheduled) {
+			// Both exist: use consistent type (date-only if both are date-only, datetime otherwise)
+			const useDateTime = dueHasTime || scheduledHasTime;
+			const scheduledDate = this.parseTaskDate(task.scheduled!);
+			const dueDate = this.parseTaskDate(task.due!);
+
+			// Only emit both if DUE is after DTSTART
+			if (dueDate.getTime() > scheduledDate.getTime()) {
+				if (useDateTime) {
+					lines.push(`DTSTART:${this.formatDateToICS(scheduledDate)}`);
+					lines.push(`DUE:${this.formatDateToICS(dueDate)}`);
+				} else {
+					lines.push(`DTSTART;VALUE=DATE:${this.formatDateOnlyToICS(task.scheduled!)}`);
+					lines.push(`DUE;VALUE=DATE:${this.formatDateOnlyToICS(task.due!)}`);
+				}
+			} else {
+				// DUE is not after DTSTART — only emit DUE (skip DTSTART to avoid validation error)
+				if (dueHasTime) {
+					lines.push(`DUE:${this.formatDateToICS(dueDate)}`);
+				} else {
+					lines.push(`DUE;VALUE=DATE:${this.formatDateOnlyToICS(task.due!)}`);
+				}
+			}
+		} else if (hasDue) {
+			if (dueHasTime) {
+				lines.push(`DUE:${this.formatDateToICS(this.parseTaskDate(task.due!))}`);
+			} else {
+				lines.push(`DUE;VALUE=DATE:${this.formatDateOnlyToICS(task.due!)}`);
+			}
+		} else if (hasScheduled) {
+			if (scheduledHasTime) {
+				lines.push(`DTSTART:${this.formatDateToICS(this.parseTaskDate(task.scheduled!))}`);
+			} else {
+				lines.push(`DTSTART;VALUE=DATE:${this.formatDateOnlyToICS(task.scheduled!)}`);
+			}
+		}
+
+		// STATUS - VTODO uses NEEDS-ACTION, IN-PROCESS, COMPLETED, CANCELLED
+		if (task.status) {
+			const statusMap: Record<string, string> = {
+				done: "COMPLETED",
+				"in-progress": "IN-PROCESS",
+				todo: "NEEDS-ACTION",
+				cancelled: "CANCELLED",
+			};
+			lines.push(`STATUS:${statusMap[task.status] || "NEEDS-ACTION"}`);
+		}
+
+		// COMPLETED timestamp when done
+		if (task.status === "done" && task.completedDate) {
+			const completed = this.parseTaskDate(task.completedDate);
+			lines.push(`COMPLETED:${this.formatDateToICS(completed)}`);
+		}
+
+		// PERCENT-COMPLETE
+		if (task.status === "done") {
+			lines.push("PERCENT-COMPLETE:100");
+		} else if (task.status === "in-progress") {
+			lines.push("PERCENT-COMPLETE:50");
+		}
+
+		// PRIORITY (1 = highest, 9 = lowest, 0 = undefined)
+		if (task.priority) {
+			const priorityMap: Record<string, string> = {
+				highest: "1",
+				high: "3",
+				medium: "5",
+				low: "7",
+				lowest: "9",
+			};
+			lines.push(`PRIORITY:${priorityMap[task.priority] || "0"}`);
+		}
+
+		// CATEGORIES from tags
+		if (task.tags && task.tags.length > 0) {
+			lines.push(`CATEGORIES:${task.tags.map((t) => this.escapeICSText(t)).join(",")}`);
+		}
+
+		// ESTIMATED-DURATION from timeEstimate
+		if (task.timeEstimate && task.timeEstimate > 0) {
+			const hours = Math.floor(task.timeEstimate / 60);
+			const minutes = task.timeEstimate % 60;
+			let duration = "PT";
+			if (hours > 0) duration += `${hours}H`;
+			if (minutes > 0) duration += `${minutes}M`;
+			if (hours === 0 && minutes === 0) duration += "0M";
+			lines.push(`ESTIMATED-DURATION:${duration}`);
+		}
+
+		// RRULE for recurring tasks
+		if (options?.includeRecurrence && task.recurrence) {
+			const rruleWithDTSTART = addDTSTARTToRecurrenceRule(task);
+			if (rruleWithDTSTART) {
+				const rruleLine = rruleWithDTSTART.replace(/^DTSTART:[^;]+;?/, "");
+				lines.push(`RRULE:${rruleLine}`);
+			}
+		}
+
+		// DESCRIPTION
+		const description = this.buildDescription(task);
+		if (description) {
+			lines.push(`DESCRIPTION:${this.escapeICSText(description)}`);
+		}
+
+		// VALARMs for reminders
+		if (options?.includeReminders && task.reminders && task.reminders.length > 0) {
+			for (const reminder of task.reminders) {
+				const valarmLines = this.generateVALARM(task, reminder);
+				if (valarmLines) {
+					lines.push(...valarmLines);
+				}
+			}
+		}
+
+		lines.push("END:VTODO");
+
+		return lines;
 	}
 
 	/**
@@ -933,6 +1179,81 @@ export class CalendarExportService {
 					: "Failed to download calendar file"
 			);
 		}
+	}
+
+	/**
+	 * Generate VTIMEZONE block for a given IANA timezone
+	 * Simplified version that works with most common timezones
+	 */
+	private static generateVTIMEZONE(tzid: string): string[] {
+		const lines = [
+			`BEGIN:VTIMEZONE`,
+			`TZID:${tzid}`,
+			`BEGIN:DAYLIGHT`,
+			`TZNAME:EDT`,
+			`TZOFFSETFROM:-0500`,
+			`TZOFFSETTO:-0400`,
+			`DTSTART:19700308T020000`,
+			`RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2SU`,
+			`END:DAYLIGHT`,
+			`BEGIN:STANDARD`,
+			`TZNAME:EST`,
+			`TZOFFSETFROM:-0400`,
+			`TZOFFSETTO:-0500`,
+			`DTSTART:19701101T020000`,
+			`RRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SU`,
+			`END:STANDARD`,
+			`END:VTIMEZONE`,
+		];
+		return lines;
+	}
+
+	/**
+	 * Format local time from task.scheduled WITHOUT UTC conversion
+	 * Used for CalDAV export with TZID
+	 * Input: "2026-04-07T07:00" or "2026-04-07T07:00:00" → "20260407T070000"
+	 */
+	private static formatLocalTime(localDateStr: string): string {
+		if (!localDateStr || !localDateStr.includes("T")) {
+			return "";
+		}
+		const [datePart, timePart] = localDateStr.split("T");
+		const timeParts = timePart.split(":");
+		const hours = timeParts[0];
+		const minutes = timeParts[1];
+		const seconds = timeParts[2] ?? "00";
+
+		if (!hours || !minutes) {
+			console.warn("Invalid time format in scheduled date:", localDateStr);
+			return "";
+		}
+
+		return `${datePart.replace(/-/g, "")}T${hours.padStart(2, "0")}${minutes.padStart(2, "0")}${seconds.padStart(2, "0")}`;
+	}
+
+	/**
+	 * Format duration from timeEstimate for local time
+	 * Input: scheduled "2026-04-07T07:00", duration 60 minutes → "20260407T080000"
+	 */
+	private static formatLocalEndTime(localDateStr: string, durationMinutes: number): string {
+		if (!localDateStr || !localDateStr.includes("T")) {
+			return "";
+		}
+		const [datePart, timePart] = localDateStr.split("T");
+		const timeParts = timePart.split(":");
+		const hours = timeParts[0];
+		const minutes = timeParts[1];
+		const seconds = timeParts[2] ?? "00";
+
+		if (!hours || !minutes) {
+			console.warn("Invalid time format in scheduled date:", localDateStr);
+			return "";
+		}
+
+		const totalMinutes = parseInt(hours) * 60 + parseInt(minutes) + (durationMinutes || 60);
+		const endHours = Math.floor(totalMinutes / 60) % 24;
+		const endMinutes = totalMinutes % 60;
+		return `${datePart.replace(/-/g, "")}T${String(endHours).padStart(2, "0")}${String(endMinutes).padStart(2, "0")}${seconds}`;
 	}
 
 	private static getVEventStatus(status: string): VEventStatus {

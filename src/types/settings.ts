@@ -232,6 +232,7 @@ export interface TaskNotesSettings {
 	// Recurring task behavior
 	maintainDueDateOffsetInRecurring: boolean;
 	resetCheckboxesOnRecurrence: boolean; // Reset markdown checkboxes in task body when recurring task completes
+	useRecurrenceTimeForNextOccurrence: boolean; // Use recurrence DTSTART time for next occurrence (resets to default on complete/skip)
 	// Frontmatter link format settings
 	useFrontmatterMarkdownLinks: boolean; // Use markdown links in frontmatter (requires obsidian-frontmatter-markdown-links plugin)
 	// OAuth Calendar Integration settings
@@ -321,6 +322,8 @@ export interface ICSIntegrationSettings {
 	icsExportBaseViewPath?: string; // Path to Bases view file for filtering (format: path/to/file.base#ViewName)
 	// Reminder export
 	includeRemindersAsValarms: boolean; // Whether to include task reminders as VALARM entries in ICS export
+	// Export format
+	exportFormat: "vevent" | "vtodo"; // Export tasks as calendar events (VEVENT) or task items (VTODO)
 }
 
 /**
@@ -363,6 +366,30 @@ export interface CalDAVExportSettings {
 	acknowledgedWipeRisk: boolean; // Must be true to enable export
 	// Debug
 	enableDebugLogging: boolean; // Show verbose debug logs (default: false)
+}
+
+/**
+ * Configuration for exporting tasks to CalDAV server
+ */
+export interface CalDAVExportSettings {
+	enabled: boolean; // Master enable/disable
+	url: string; // Full CalDAV URL
+	calendarName: string; // Target calendar display name
+	includeReminders: boolean; // Include VALARMs (default: true)
+	includeRecurrence: boolean; // Export recurring tasks as series (default: true)
+	concurrentExports: number; // Number of concurrent export tasks (default: 5)
+	// Bases view filtering
+	enableBasesViewFilter: boolean; // Whether to filter tasks using a Bases view
+	caldavExportBaseViewPath?: string; // Path to Bases view file for filtering (format: path/to/file.base#ViewName)
+	// Auto-export (separate from ICS)
+	enableAutoExport: boolean; // Enable auto-export for CalDAV
+	autoExportInterval: number; // Auto-export interval in minutes
+	// Safety
+	acknowledgedWipeRisk: boolean; // Must be true to enable export
+	// Debug
+	enableDebugLogging: boolean; // Show verbose debug logs (default: false)
+	// Export format
+	exportFormat: "vevent" | "vtodo"; // Export tasks as calendar events (VEVENT) or task items (VTODO)
 }
 
 export type TimeblockAttachmentSearchOrder =

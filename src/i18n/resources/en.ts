@@ -1917,6 +1917,13 @@ export const en: TranslationTree = {
 					description:
 						"When enabled, exports task reminders as VALARM entries in the ICS file. This allows calendar apps to show notifications before scheduled/due dates. Works with relative reminders (scheduled:offset or due:offset) and absolute reminders.",
 				},
+				exportFormat: {
+					name: "Export format",
+					description:
+						"Choose how tasks are exported: calendar events (VEVENT) for calendar apps, or task items (VTODO) for task managers like Todoist or TickTick.",
+					vevent: "Calendar events (VEVENT)",
+					vtodo: "Task items (VTODO)",
+				},
 				basesViewFilter: {
 					header: "Filter by Bases View",
 					description: "Export only tasks matching a Bases view filter",
@@ -2118,6 +2125,13 @@ export const en: TranslationTree = {
 					name: "Export recurring tasks as series",
 					description:
 						"When enabled, adds RRULE to recurring tasks so they appear as repeating events in CalDAV calendars.",
+				},
+				exportFormat: {
+					name: "Export format",
+					description:
+						"Choose how tasks are exported: calendar events (VEVENT) for calendar apps, or task items (VTODO) for task managers like Todoist or TickTick.",
+					vevent: "Calendar events (VEVENT)",
+					vtodo: "Task items (VTODO)",
 				},
 				concurrentExports: {
 					name: "Concurrent export tasks",

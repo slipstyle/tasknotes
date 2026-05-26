@@ -190,7 +190,7 @@ function formatDtstartValue(dateStr: string): string {
 		const hours = String(dateTime.getHours()).padStart(2, "0");
 		const minutes = String(dateTime.getMinutes()).padStart(2, "0");
 		const seconds = String(dateTime.getSeconds()).padStart(2, "0");
-		return `${year}${month}${day}T${hours}${minutes}${seconds}Z`;
+		return `${year}${month}${day}T${hours}${minutes}${seconds}`;
 	}
 
 	const date = parseDateToUTC(dateStr);
@@ -473,7 +473,8 @@ export function updateToNextScheduledOccurrence(
 		| "complete_instances"
 		| "skipped_instances"
 	>,
-	maintainDueOffset = true
+	maintainDueOffset = true,
+	useRecurrenceTime = false
 ): { scheduled: string | null; due: string | null } {
 	const nextOccurrence = getNextUncompletedOccurrence(task);
 	let nextScheduleStr: string | null = null;
@@ -502,16 +503,40 @@ export function updateToNextScheduledOccurrence(
 			});
 		}
 
-		if (task.scheduled && task.scheduled.includes("T")) {
+		if (useRecurrenceTime && task.recurrence) {
+			const dtstart = parseDtstartFromRecurrence(task.recurrence);
+			if (dtstart) {
+				// Check if recurrence DTSTART has time component (not date-only)
+				const dtstartMatch = task.recurrence.match(/DTSTART:(\d{8}(?:T\d{6}Z?)?)/);
+				const hasTime = dtstartMatch && dtstartMatch[1].length > 8;
+
+				if (hasTime) {
+					const hours = String(dtstart.getUTCHours()).padStart(2, "0");
+					const minutes = String(dtstart.getUTCMinutes()).padStart(2, "0");
+					nextScheduleStr = `${formatDateForStorage(nextOccurrence)}T${hours}:${minutes}`;
+				}
+				// If date-only (no time), fall through to keep nextScheduleStr as date-only
+			}
+		} else if (task.scheduled && task.scheduled.includes("T")) {
 			const timePart = task.scheduled.split("T")[1];
-			nextScheduleStr = `${formatDateForStorage(nextOccurrence)}T${timePart}`;
+			const isValidFormat = /^\d{2}:\d{2}(:\d{2})?$/.test(timePart);
+			if (isValidFormat) {
+				nextScheduleStr = `${formatDateForStorage(nextOccurrence)}T${timePart}`;
+			} else {
+				console.warn("Invalid time format in scheduled date:", task.scheduled);
+			}
 		} else {
 			nextScheduleStr = formatDateForStorage(nextOccurrence);
 		}
 
 		if (nextDueDate && task.due && task.due.includes("T")) {
 			const timePart = task.due.split("T")[1];
-			nextDueStr = `${formatDateForStorage(nextDueDate)}T${timePart}`;
+			const isValidFormat = /^\d{2}:\d{2}(:\d{2})?$/.test(timePart);
+			if (isValidFormat) {
+				nextDueStr = `${formatDateForStorage(nextDueDate)}T${timePart}`;
+			} else {
+				console.warn("Invalid time format in due date:", task.due);
+			}
 		} else if (nextDueDate) {
 			nextDueStr = formatDateForStorage(nextDueDate);
 		}

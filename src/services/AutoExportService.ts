@@ -203,6 +203,7 @@ export class AutoExportService {
 				useDurationForExport: this.plugin.settings.icsIntegration.useDurationForExport,
 				includeRecurrence: this.plugin.settings.icsIntegration.exportRecurringAsSeries,
 				includeReminders: this.plugin.settings.icsIntegration.includeRemindersAsValarms,
+				exportFormat: this.plugin.settings.icsIntegration.exportFormat,
 			};
 			const icsContent = CalendarExportService.generateMultipleTasksICSContent(
 				allTasks,
@@ -276,6 +277,7 @@ export class AutoExportService {
 				includeRecurrence: this.plugin.settings.caldavExport.includeRecurrence,
 				useDurationForExport: this.plugin.settings.icsIntegration.useDurationForExport,
 				concurrentExports: this.plugin.settings.caldavExport.concurrentExports,
+				exportFormat: this.plugin.settings.caldavExport.exportFormat,
 			});
 
 			this.lastCalDAVExportTime = new Date();

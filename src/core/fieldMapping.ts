@@ -300,6 +300,10 @@ export function mapTaskFromFrontmatter(
 		mapped.caldavEventUrl = normalizeStringValue(frontmatter[mapping.caldavEventUrl]);
 	}
 
+	if (frontmatter[mapping.caldavEventId] !== undefined) {
+		mapped.caldavEventId = normalizeStringValue(frontmatter[mapping.caldavEventId]);
+	}
+
 	if (frontmatter[mapping.reminders] !== undefined) {
 		mapped.reminders = normalizeReminders(frontmatter[mapping.reminders]);
 	}

@@ -1678,6 +1678,39 @@ export function renderIntegrationsTab(
 					})
 				);
 
+				// Export format dropdown (VEVENT vs VTODO)
+				group.addSetting((setting) =>
+					configureDropdownSetting(setting, {
+						name: translate(
+							"settings.integrations.autoExport.exportFormat.name"
+						),
+						desc: translate(
+							"settings.integrations.autoExport.exportFormat.description"
+						),
+						options: [
+							{
+								value: "vevent",
+								label: translate(
+									"settings.integrations.autoExport.exportFormat.vevent"
+								),
+							},
+							{
+								value: "vtodo",
+								label: translate(
+									"settings.integrations.autoExport.exportFormat.vtodo"
+								),
+							},
+						],
+						getValue: () =>
+							plugin.settings.icsIntegration.exportFormat ?? "vevent",
+						setValue: async (value: string) => {
+							plugin.settings.icsIntegration.exportFormat =
+								value as "vevent" | "vtodo";
+							save();
+						},
+					})
+				);
+
 				// Manual export trigger button
 				group.addSetting(
 					(setting) =>
@@ -1981,6 +2014,39 @@ export function renderIntegrationsTab(
 					getValue: () => plugin.settings.caldavExport.includeRecurrence ?? true,
 					setValue: async (value: boolean) => {
 						plugin.settings.caldavExport.includeRecurrence = value;
+						save();
+					},
+				})
+			);
+
+			// Export format dropdown (VEVENT vs VTODO)
+			group.addSetting((setting) =>
+				configureDropdownSetting(setting, {
+					name: translate(
+						"settings.integrations.autoExport.exportFormat.name"
+					),
+					desc: translate(
+						"settings.integrations.autoExport.exportFormat.description"
+					),
+					options: [
+						{
+							value: "vevent",
+							label: translate(
+								"settings.integrations.autoExport.exportFormat.vevent"
+							),
+						},
+						{
+							value: "vtodo",
+							label: translate(
+								"settings.integrations.autoExport.exportFormat.vtodo"
+							),
+						},
+					],
+					getValue: () =>
+						plugin.settings.caldavExport.exportFormat ?? "vevent",
+					setValue: async (value: string) => {
+						plugin.settings.caldavExport.exportFormat =
+							value as "vevent" | "vtodo";
 						save();
 					},
 				})

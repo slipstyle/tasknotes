@@ -83,6 +83,7 @@ ICS settings define how subscribed calendar events are represented in your vault
 Automatic export keeps an ICS feed of your tasks updated on a schedule. Configure whether it is enabled, where the file is written (vault-relative path), the refresh interval, and use **Export now** for immediate output.
 
 Export filters can omit archived tasks, completed tasks, tasks without due dates, or tasks without scheduled dates. When both due-date and scheduled-date requirements are enabled, exported tasks must have both dates.
+
 For detailed documentation on ICS export features including filtering by Bases views, see [ICS Export](../features/ics-export.md).
 
 ## HTTP API
@@ -93,7 +94,6 @@ Changes to API enablement or port require an Obsidian restart to take effect.
 
 !!! warning
     The HTTP API binds to loopback only and browser CORS is limited to loopback origins. If the authentication token is empty, local API requests are still unauthenticated. Set a token unless your local environment is fully trusted.
-If the authentication token is empty, API requests are unauthenticated. Set a token unless your environment is fully trusted.
 
 ## Webhooks
 
