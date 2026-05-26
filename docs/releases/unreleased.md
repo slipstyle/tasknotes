@@ -49,3 +49,28 @@ Example:
     - When enabled, task reminders are exported as VALARM blocks inside each VEVENT
     - Calendar apps that support VALARM will display reminder alerts for exported tasks
     - Enable via Settings > Integrations > Automatic ICS export > Include reminders as VALARM
+
+- New CalDAV export integration
+    - Push tasks directly to a CalDAV server (Nextcloud, ownCloud, and compatible servers)
+    - Diff-based sync: calculates creates, updates, and deletes based on stored event UUIDs
+    - Stores `caldavEventId` (UUID), `caldavEventUrl`, and `caldavLastSynced` in task frontmatter
+    - Field names are configurable via the FieldMapper system (same as Google Calendar fields)
+    - Deletes orphaned CalDAV events when corresponding tasks are removed from TaskNotes
+    - Handles Nextcloud trashbin 403 conflicts gracefully
+    - Enable via Settings > Integrations > CalDAV Export
+
+- CalDAV export settings
+    - Server URL, username, and password credential fields (auto-saved on change)
+    - Calendar path for the target collection
+    - Configurable sync interval (independent from ICS auto-export interval)
+    - "Test Connection" button with live feedback
+    - "Export Now" button for on-demand sync
+    - Export on save toggle
+    - Optional RRULE export for recurring tasks
+    - Optional Bases view filter (separate from ICS filter)
+    - Debug logging toggle for troubleshooting sync issues
+
+- CalDAV concurrent export setting
+    - Controls number of parallel requests when pushing events to CalDAV
+    - Default: 5, range: 1–100
+    - Higher values speed up large exports; lower values suit slower servers
