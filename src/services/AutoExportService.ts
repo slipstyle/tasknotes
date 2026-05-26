@@ -1,6 +1,7 @@
-import { TFile, parseYaml } from "obsidian";
+import { Notice, TFile, parseYaml } from "obsidian";
 import TaskNotesPlugin from "../main";
 import { CalendarExportService } from "./CalendarExportService";
+import { CalDAVService } from "./CalDAVService";
 import type { InterpolationValues, TranslationKey } from "../i18n";
 import { createTaskNotesLogger } from "../utils/tasknotesLogger";
 import { publishUserNotice } from "../core/userNotices";
@@ -17,16 +18,20 @@ const tasknotesLogger = createTaskNotesLogger({ tag: "Services/AutoExportService
 
 export class AutoExportService {
 	private plugin: TaskNotesPlugin;
-	private scheduledExportId: number | null = null;
+	private intervalId: number | null = null;
+	private caldavIntervalId: number | null = null;
 	private lastExportTime: Date | null = null;
 	private nextExportTime: Date | null = null;
-	private isRunning = false;
+	private lastCalDAVExportTime: Date | null = null;
+	private nextCalDAVExportTime: Date | null = null;
+	private caldavService: CalDAVService | null = null;
 
 	constructor(plugin: TaskNotesPlugin) {
 		this.plugin = plugin;
+		this.caldavService = new CalDAVService(plugin);
 	}
 
-	private translate(key: TranslationKey, variables?: InterpolationValues): string {
+	private translate(key: TranslationKey, variables?: Record<string, any>): string {
 		return this.plugin.i18n.translate(key, variables);
 	}
 
@@ -34,26 +39,77 @@ export class AutoExportService {
 	 * Start the automatic export service
 	 */
 	start(): void {
-		if (!this.plugin.settings.icsIntegration.enableAutoExport) {
-			return;
+		this.stop(); // Stop any existing intervals
+
+		// Start ICS auto-export if enabled
+		if (this.plugin.settings.icsIntegration.enableAutoExport) {
+			const intervalMinutes = this.plugin.settings.icsIntegration.autoExportInterval;
+			const intervalMs = intervalMinutes * 60 * 1000;
+
+			this.nextExportTime = new Date(Date.now() + intervalMs);
+
+			this.intervalId = setInterval(async () => {
+				await this.performICSExport();
+				this.nextExportTime = new Date(Date.now() + intervalMs);
+			}, intervalMs) as unknown as number;
+
+			console.log(
+				`TaskNotes: ICS auto-export started (interval: ${intervalMinutes} minutes)`
+			);
 		}
 
-		this.stop();
-		this.isRunning = true;
+		// Start CalDAV auto-export if enabled
+		if (this.plugin.settings.caldavExport.enableAutoExport) {
+			this.startCalDAVExport();
+		}
+	}
 
-		this.scheduleNextExport();
+	/**
+	 * Start the CalDAV auto-export service
+	 */
+	startCalDAVExport(): void {
+		if (this.caldavIntervalId) {
+			clearInterval(this.caldavIntervalId);
+		}
+
+		const intervalMinutes = this.plugin.settings.caldavExport.autoExportInterval;
+		const intervalMs = intervalMinutes * 60 * 1000;
+
+		this.nextCalDAVExportTime = new Date(Date.now() + intervalMs);
+
+		this.caldavIntervalId = setInterval(async () => {
+			await this.performCalDAVExport();
+			this.nextCalDAVExportTime = new Date(Date.now() + intervalMs);
+		}, intervalMs) as unknown as number;
+
+		console.log(`TaskNotes: CalDAV auto-export started (interval: ${intervalMinutes} minutes)`);
+	}
+
+	/**
+	 * Stop the CalDAV auto-export service
+	 */
+	stopCalDAVExport(): void {
+		if (this.caldavIntervalId) {
+			clearInterval(this.caldavIntervalId);
+			this.caldavIntervalId = null;
+			this.nextCalDAVExportTime = null;
+		}
 	}
 
 	/**
 	 * Stop the automatic export service
 	 */
 	stop(): void {
-		this.isRunning = false;
-		if (this.scheduledExportId !== null) {
-			window.clearTimeout(this.scheduledExportId);
-			this.scheduledExportId = null;
+		if (this.intervalId) {
+			clearInterval(this.intervalId);
+			this.intervalId = null;
+			this.nextExportTime = null;
 		}
-		this.nextExportTime = null;
+		if (this.caldavIntervalId) {
+			clearInterval(this.caldavIntervalId);
+			this.caldavIntervalId = null;
+			this.nextCalDAVExportTime = null;
+		}
 	}
 
 	/**
@@ -66,10 +122,17 @@ export class AutoExportService {
 	}
 
 	/**
-	 * Manually trigger an export
+	 * Manually trigger an ICS export only
 	 */
-	async exportNow(): Promise<void> {
-		await this.performExport();
+	async exportICSNow(): Promise<void> {
+		await this.performICSExport();
+	}
+
+	/**
+	 * Manually trigger a CalDAV export only
+	 */
+	async exportCalDAVNow(): Promise<void> {
+		await this.performCalDAVExport();
 	}
 
 	/**
@@ -86,38 +149,32 @@ export class AutoExportService {
 		return this.nextExportTime;
 	}
 
-	private scheduleNextExport(): void {
-		if (!this.isRunning || !this.plugin.settings.icsIntegration.enableAutoExport) {
-			this.nextExportTime = null;
-			return;
-		}
-
-		const intervalMinutes = this.plugin.settings.icsIntegration.autoExportInterval;
-		const intervalMs = intervalMinutes * 60 * 1000;
-		this.nextExportTime = new Date(Date.now() + intervalMs);
-
-		this.scheduledExportId = window.setTimeout(() => {
-			this.scheduledExportId = null;
-			void this.performExport().finally(() => {
-				if (this.isRunning) {
-					this.scheduleNextExport();
-				}
-			});
-		}, intervalMs);
+	/**
+	 * Get the last CalDAV export time
+	 */
+	getLastCalDAVExportTime(): Date | null {
+		return this.lastCalDAVExportTime;
 	}
 
 	/**
-	 * Perform the actual export
+	 * Get the next scheduled CalDAV export time
 	 */
-	private async performExport(): Promise<void> {
+	getNextCalDAVExportTime(): Date | null {
+		return this.nextCalDAVExportTime;
+	}
+
+	/**
+	 * Perform the ICS export only
+	 */
+	private async performICSExport(): Promise<void> {
 		try {
 			const exportPath =
 				this.plugin.settings.icsIntegration.autoExportPath || "tasknotes-calendar.ics";
 
-			// Get all tasks
 			let allTasks = await this.plugin.cacheManager.getAllTasks();
 
 			if (allTasks.length === 0) {
+				console.log("TaskNotes: ICS export skipped - no tasks found");
 				return;
 			}
 
@@ -128,7 +185,8 @@ export class AutoExportService {
 			) {
 				const filterResult = await this.getTasksFilteredByBasesView(
 					this.plugin.settings.icsIntegration.icsExportBaseViewPath,
-					allTasks
+					allTasks,
+					"ics"
 				);
 
 				if (!filterResult.success) {
@@ -136,25 +194,13 @@ export class AutoExportService {
 				} else if (filterResult.tasks) {
 					allTasks = filterResult.tasks;
 					console.log(
-						`[TaskNotes] Exported ${allTasks.length} tasks (filtered from original)`
+						`[TaskNotes] ICS exported ${allTasks.length} tasks (filtered from original)`
 					);
 				}
 			}
 
-			// Generate ICS content with export options from settings
 			const exportOptions = {
 				useDurationForExport: this.plugin.settings.icsIntegration.useDurationForExport,
-				excludeArchived:
-					this.plugin.settings.icsIntegration.excludeArchivedFromExport ?? false,
-				excludeCompleted:
-					this.plugin.settings.icsIntegration.excludeCompletedFromExport ?? false,
-				completedStatuses: this.plugin.statusManager.getCompletedStatuses(),
-				requireDueDate:
-					this.plugin.settings.icsIntegration.requireDueDateForExport ?? false,
-				requireScheduledDate:
-					this.plugin.settings.icsIntegration.requireScheduledDateForExport ?? false,
-				includeObsidianLink: true,
-				vaultName: this.plugin.app.vault.getName(),
 				includeRecurrence: this.plugin.settings.icsIntegration.exportRecurringAsSeries,
 				includeReminders: this.plugin.settings.icsIntegration.includeRemindersAsValarms,
 			};
@@ -163,34 +209,116 @@ export class AutoExportService {
 				exportOptions
 			);
 
-			// Write to file - use path as-is since Obsidian handles normalization
 			const normalizedPath = exportPath;
-
-			// Check if file exists
 			const fileExists = await this.plugin.app.vault.adapter.exists(normalizedPath);
 
 			if (fileExists) {
-				// Update existing file
 				await this.plugin.app.vault.adapter.write(normalizedPath, icsContent);
 			} else {
-				// Create new file
-				await createVaultFile(this.plugin.app, normalizedPath, icsContent);
+				await this.plugin.app.vault.create(normalizedPath, icsContent);
 			}
 
 			this.lastExportTime = new Date();
+			console.log(
+				`TaskNotes: ICS export completed - ${allTasks.length} tasks exported to ${exportPath}`
+			);
 		} catch (error) {
-			tasknotesLogger.error("TaskNotes: Auto export failed:", {
-				category: "provider",
-				operation: "auto-export",
-				error: error,
+			console.error("TaskNotes: ICS export failed:", error);
+			throw error;
+		}
+	}
+
+	/**
+	 * Perform the CalDAV export only
+	 */
+	private async performCalDAVExport(): Promise<void> {
+		if (
+			!this.plugin.settings.caldavExport.enabled ||
+			!this.plugin.settings.caldavExport.acknowledgedWipeRisk
+		) {
+			console.log("TaskNotes: CalDAV export skipped - not enabled");
+			return;
+		}
+
+		try {
+			let caldavTasks = await this.plugin.cacheManager.getAllTasks();
+
+			if (caldavTasks.length === 0) {
+				console.log("TaskNotes: CalDAV export skipped - no tasks found");
+				return;
+			}
+
+			// Apply CalDAV-specific Bases view filter if enabled
+			if (
+				this.plugin.settings.caldavExport.enableBasesViewFilter &&
+				this.plugin.settings.caldavExport.caldavExportBaseViewPath
+			) {
+				const filterResult = await this.getTasksFilteredByBasesView(
+					this.plugin.settings.caldavExport.caldavExportBaseViewPath,
+					caldavTasks,
+					"caldav"
+				);
+
+				if (!filterResult.success) {
+					console.warn(
+						`[TaskNotes] CalDAV Bases view filter error: ${filterResult.error}`
+					);
+				} else if (filterResult.tasks) {
+					caldavTasks = filterResult.tasks;
+					console.log(
+						`[TaskNotes] CalDAV exported ${caldavTasks.length} tasks (filtered from original)`
+					);
+				}
+			}
+
+			const caldavResult = await this.caldavService!.pushEvents(caldavTasks, {
+				includeReminders: this.plugin.settings.caldavExport.includeReminders,
+				includeRecurrence: this.plugin.settings.caldavExport.includeRecurrence,
+				useDurationForExport: this.plugin.settings.icsIntegration.useDurationForExport,
+				concurrentExports: this.plugin.settings.caldavExport.concurrentExports,
 			});
+
+			this.lastCalDAVExportTime = new Date();
+
+			if (caldavResult.success) {
+				console.log(
+					`TaskNotes: CalDAV export completed - ${caldavResult.eventsPushed} tasks pushed`
+				);
+			} else {
+				console.error(`TaskNotes: CalDAV export failed: ${caldavResult.errors.join(", ")}`);
+				throw new Error(caldavResult.errors.join(", "));
+			}
+		} catch (caldavError) {
+			console.error("TaskNotes: CalDAV export error:", caldavError);
+			throw caldavError;
+		}
+	}
+
+	/**
+	 * Perform the actual export (both ICS and CalDAV)
+	 * @deprecated Use exportICSNow() or exportCalDAVNow() instead
+	 */
+	private async performExport(): Promise<void> {
+		try {
+			// Perform ICS export
+			await this.performICSExport();
+
+			// Perform CalDAV export
+			if (
+				this.plugin.settings.caldavExport.enabled &&
+				this.plugin.settings.caldavExport.acknowledgedWipeRisk
+			) {
+				await this.performCalDAVExport();
+			}
+		} catch (error) {
+			console.error("TaskNotes: Auto export failed:", error);
 
 			// Only show notice for manual exports or first few failures
 			if (
 				!this.lastExportTime ||
 				Date.now() - this.lastExportTime.getTime() > 6 * 60 * 60 * 1000
 			) {
-				publishUserNotice(this.plugin.emitter,
+				new Notice(
 					this.translate("services.autoExport.notices.exportFailed", {
 						error: error instanceof Error ? error.message : String(error),
 					})
@@ -204,8 +332,12 @@ export class AutoExportService {
 	 */
 	public async getTasksFilteredByBasesView(
 		viewPath: string,
-		tasks: TaskInfo[]
+		tasks: TaskInfo[],
+		exportType: "ics" | "caldav" = "ics"
 	): Promise<{ success: boolean; tasks?: TaskInfo[]; error?: string }> {
+		const logPrefix = exportType === "caldav" ? "[CalDAV Filter]" : "[ICS Filter]";
+		const isDebugEnabled = this.plugin.settings.caldavExport?.enableDebugLogging ?? false;
+
 		let baseFilePath: string;
 		let viewName: string | null = null;
 
@@ -295,6 +427,10 @@ export class AutoExportService {
 			return { success: true, tasks };
 		}
 
+		if (isDebugEnabled) {
+			console.log(`${logPrefix} Using filters:`, JSON.stringify(filters, null, 2));
+		}
+
 		const filterQuery = this.convertBasesFiltersToQuery(filters);
 
 		if (!filterQuery || !filterQuery.children || filterQuery.children.length === 0) {
@@ -305,7 +441,11 @@ export class AutoExportService {
 		try {
 			const filteredTasks = tasks.filter((task) => {
 				try {
-					return this.plugin.filterService.evaluateFilterNode(filterQuery, task);
+					const result = this.plugin.filterService.evaluateFilterNode(filterQuery, task);
+					if (!result && isDebugEnabled) {
+						console.log(`${logPrefix} Excluded: ${task.title} (path: ${task.path})`);
+					}
+					return result;
 				} catch (error) {
 					console.debug(`[TaskNotes] Error evaluating task ${task.path}:`, error);
 					return true;
