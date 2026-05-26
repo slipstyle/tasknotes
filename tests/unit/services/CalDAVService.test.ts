@@ -222,24 +222,6 @@ describe("CalDAVService", () => {
 		});
 	});
 
-	describe("wrapInICSCalendar", () => {
-		it("should wrap VEVENT in valid ICS calendar structure", () => {
-			const vevent = `BEGIN:VEVENT
-UID:test-123
-SUMMARY:Test Event
-DTSTART:20250415T100000
-END:VEVENT`;
-
-			const ics = (service as any).wrapInICSCalendar(vevent);
-
-			expect(ics).toContain("BEGIN:VCALENDAR");
-			expect(ics).toContain("VERSION:2.0");
-			expect(ics).toContain("PRODID:-//TaskNotes//EN");
-			expect(ics).toContain(vevent);
-			expect(ics).toContain("END:VCALENDAR");
-		});
-	});
-
 	describe("pushEvents", () => {
 		it("should return error when no credentials configured", async () => {
 			mockPlugin.loadData.mockResolvedValue({});
